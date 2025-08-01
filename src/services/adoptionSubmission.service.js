@@ -109,7 +109,7 @@ const getSubmissionsByPetIds = async (petIds) => {
     // Tìm tất cả AdoptionForm có status là active và thuộc các petId
     const adoptionForms = await db.AdoptionForm.find({
       pet: { $in: petIds },
-      status: "active",
+      status: { $in: ["active", "adopted"] },
     }).select("_id");
 
     const formIds = adoptionForms.map((f) => f._id);

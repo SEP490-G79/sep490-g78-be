@@ -231,7 +231,7 @@ const getFormByPetId = async (req, res, next) => {
     const { petId } = req.params;
     const selectedPet = await db.Pet.findOne({
       _id: petId,
-      status: "available",
+      status:  { $in: ["available", "adopted", "booking", "delivered"] },
     });
     if (!selectedPet) {
       return res

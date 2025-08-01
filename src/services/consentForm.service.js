@@ -282,7 +282,8 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
         const updatedPet = await db.Pet.findOneAndUpdate(
           { _id: updatedConsentForm?.pet?._id },
-          { status: "adopted" },
+          { status: "adopted" ,
+             adopter: updatedConsentForm?.adopter?._id},
           { new: true }
         );
         if (!updatedPet) {
