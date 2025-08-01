@@ -77,6 +77,11 @@ shelterRouter.get(
   shelterController.getSubmissionStatistics
 );
 
+shelterRouter.get(
+  "/:shelterId/statistics/adoption-submissions-by-week",
+  shelterController.getAdoptionSubmissionsByWeek
+);
+
 shelterRouter.get("/get-all", shelterController.getAll);
 shelterRouter.get(
   "/get-members/:shelterId",

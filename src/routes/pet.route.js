@@ -9,7 +9,7 @@ const {
   isShelterStaff,
   isShelterMember,
 } = require("../middlewares/shelter.middleware");
-const  cloudinary  = require("../configs/cloudinary");
+const cloudinary = require("../configs/cloudinary");
 
 petRouter.use(bodyParser.json());
 petRouter.get("/get-pet-list", petController.getPetList);

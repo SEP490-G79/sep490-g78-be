@@ -42,7 +42,7 @@ async function getAll() {
   }
 }
 
-const  getShelterById = async (shelterId) => {
+const getShelterById = async (shelterId) => {
   try {
     const shelter = await Shelter.findById(shelterId)
       .populate("members._id", "fullName avatar email roles status")
@@ -64,7 +64,7 @@ const  getShelterById = async (shelterId) => {
   } catch (error) {
     throw error;
   }
-}
+};
 
 const getShelterRequestByUserId = async (userId) => {
   try {
@@ -1285,7 +1285,39 @@ const getAdoptionFormsByWeek = async (shelterId) => {
   return result;
 };
 const getSubmissionStatistics = async (shelterId) => {
-  const submissions = await AdoptionSubmission.aggregate([
+  const submissions = await AdoptionSubmission.find()
+    .populate({
+      path: "adoptionForm",
+      select: "shelter",
+    })
+    .lean();
+
+  const filteredSubmissions = submissions.filter(
+    (s) => s.adoptionForm?.shelter?.toString() === shelterId.toString()
+  );
+
+  const result = {
+    approved: 0,
+    rejected: 0,
+    pending: 0,
+    interviewing: 0,
+    reviewed: 0,
+  };
+
+  for (const s of filteredSubmissions) {
+    if (result.hasOwnProperty(s.status)) {
+      result[s.status]++;
+    }
+  }
+
+  return result;
+};
+
+const getAdoptionSubmissionsByWeek = async (shelterId) => {
+  const now = dayjs().endOf("day").toDate();
+  const fourWeeksAgo = dayjs().subtract(4, "week").startOf("day").toDate();
+
+  const submissions = await db.AdoptionSubmission.aggregate([
     {
       $lookup: {
         from: "adoptionforms",
@@ -1298,31 +1330,53 @@ const getSubmissionStatistics = async (shelterId) => {
     {
       $match: {
         "form.shelter": new mongoose.Types.ObjectId(shelterId),
+        createdAt: { $gte: fourWeeksAgo, $lte: now },
+      },
+    },
+    {
+      $addFields: {
+        weekNumber: { $isoWeek: "$createdAt" },
+        year: { $isoWeekYear: "$createdAt" },
       },
     },
     {
       $group: {
-        _id: "$status",
+        _id: {
+          week: "$weekNumber",
+          year: "$year",
+        },
         count: { $sum: 1 },
+      },
+    },
+    {
+      $sort: {
+        "_id.year": 1,
+        "_id.week": 1,
       },
     },
   ]);
 
-  const result = {
-    approved: 0,
-    rejected: 0,
-    pending: 0,
-  };
+  // Chuẩn hóa ra đúng 4 tuần gần nhất
+  const result = [];
+  for (let i = 3; i >= 0; i--) {
+    const tmpDate = dayjs().subtract(i, "week");
+    const week = getISOWeekNumber(tmpDate.toDate());
+    const year = tmpDate.year();
 
-  submissions.forEach((s) => {
-    if (result.hasOwnProperty(s._id)) {
-      result[s._id] = s.count;
-    }
-  });
+    const found = submissions.find(
+      (f) => f._id.week === week && f._id.year === year
+    );
+
+    result.push({
+      week: `${tmpDate.startOf("isoWeek").format("DD/MM")} - ${tmpDate
+        .endOf("isoWeek")
+        .format("DD/MM")}`,
+      count: found ? found.count : 0,
+    });
+  }
 
   return result;
 };
-
 const shelterService = {
   // USER
   getAll,
@@ -1353,6 +1407,7 @@ const shelterService = {
   getAdoptedPetsByWeek,
   getSubmissionStatistics,
   getAdoptionFormsByWeek,
+  getAdoptionSubmissionsByWeek,
 
   // ADMIN
   getAllShelter,
