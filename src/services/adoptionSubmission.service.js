@@ -386,36 +386,37 @@ const addInterviewNote = async (submissionId, note) => {
 
 const updateManySubmissionStatus = async (adopterIds, petId) => {
   try {
-    if (!petId) {
-      throw new Error("Thiếu id của thú nuôi!");
-    }
-
-
-    const adoptionForm = await db.AdoptionForm.findOne({
-      pet: petId,
-      status: "active",
-    });
-
-    if (!adoptionForm) {
-      throw new Error("Không tìm thấy đơn nhận nuôi!");
-    }
-
-    const result = await db.AdoptionSubmission.updateMany(
-      {
-        adoptionForm: adoptionForm._id,
-        performedBy: { $in: adopterIds },
-        status: {$ne: "rejected"},
-      },
-      {
-        $set: { status: "rejected" },
+    console.log("ngu"+adopterIds);
+    if(adopterIds && adopterIds.length != 0){
+      if (!petId) {
+        throw new Error("Thiếu id của thú nuôi!");
       }
-    );
-    return result;
+  
+      const adoptionForm = await db.AdoptionForm.findOne({
+        pet: petId,
+        status: "active",
+      });
+  
+      if (!adoptionForm) {
+        throw new Error("Không tìm thấy đơn nhận nuôi!");
+      }
+  
+      const result = await db.AdoptionSubmission.updateMany(
+        {
+          adoptionForm: adoptionForm._id,
+          performedBy: { $in: adopterIds },
+        },
+        {
+          $set: { status: "rejected" },
+        }
+      );
+      return result
+    }
+    return true;
   } catch (error) {
     throw error;
   }
 };
-
 
 const adoptionSubmissionService = {
   getAdtoptionRequestList,

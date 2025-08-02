@@ -191,7 +191,7 @@ const updatePet = async (petId, updateData) => {
     //  Nếu đang muốn đổi sang "available"
     // Nếu đang muốn đổi sang "available"
     if (updateData.status === "available" && pet.status !== "available") {
-      const form = await db.AdoptionForm.findOne({ pet: petId });
+      const form = await db.AdoptionForm.findOne({ pet: petId, status:"draft" });
       if (!form) {
         throw new Error(
           "Không thể đặt 'sẵn sàng nhận nuôi': Chưa có adoption form."
@@ -206,7 +206,7 @@ const updatePet = async (petId, updateData) => {
 
     // Nếu đang muốn đổi sang "unavailable"
     if (updateData.status === "unavailable" && pet.status !== "unavailable") {
-      const form = await db.AdoptionForm.findOne({ pet: petId });
+      const form = await db.AdoptionForm.findOne({ pet: petId, status:"active" });
       if (!form) {
         throw new Error(
           "Không thể đặt 'chưa sẵn sàng nhận nuôi': Chưa có adoption form."
