@@ -24,11 +24,6 @@ userRouter.put( "/wishlist/:petId", verifyAccessToken, userController.wishListPe
 
 //ADMIN
 userRouter.get("/admin/get-users-list",[verifyAccessToken, isAdmin], userController.getUsersList);
-userRouter.post(
-  "/admin/add-user",
-  [verifyAccessToken, isAdmin],
-  userController.addUser
-);
 userRouter.put(
   "/admin/change-roles/:userId",
   [verifyAccessToken, isAdmin],

@@ -144,7 +144,10 @@ const createComment = async (req, res) => {
       userId,
       message,
     });
-    res.status(201).json(comment);
+    res.status(201).json({
+      message: "Bình luận đã được tạo thành công",
+      data: comment,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -157,7 +160,10 @@ const editComment = async (req, res) => {
     const userId = req.payload.id;
 
     const updated = await postService.editComment(commentId, userId, message);
-    res.status(200).json(updated);
+    res.status(200).json({
+      message: "Bình luận đã được cập nhật thành công",
+      data: updated,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -169,7 +175,10 @@ const removeComment = async (req, res) => {
     const userId = req.payload.id;
 
     const deleted = await postService.removeComment(commentId, userId);
-    res.status(200).json(deleted);
+    res.status(200).json({
+      message: "Bình luận đã được xóa thành công",
+      data: deleted,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

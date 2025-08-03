@@ -49,7 +49,7 @@ const postSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["active", "hidden", "deleted"],
+      enum: ["active", "deleted"],
       default: "active",
     },
   },
