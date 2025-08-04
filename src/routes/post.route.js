@@ -31,7 +31,7 @@ postRouter.put("/:postId/edit",
   },
   postController.editPost
 );
-postRouter.delete("/:postId", verifyAccessToken, postController.deletePost);
+postRouter.delete("/:postId/delete", verifyAccessToken, postController.deletePost);
 postRouter.post("/react/:postId", verifyAccessToken, postController.reactPost);
 postRouter.post("/:postId/report",
   verifyAccessToken,

@@ -32,12 +32,23 @@ const getAdtoptionRequestList = async (id) => {
   }
 };
 
+
 const getSubmissionsByUserId = async (userId) => {
   try {
-    const submissions = await db.AdoptionSubmission.find({ createdBy: userId })
-      .populate("adoptionForm")
-      .populate("adoptionForm.pet")
-      .populate("adoptionForm.shelter");
+    const submissions = await db.AdoptionSubmission.find({ performedBy: userId })
+       .populate({
+        path: "adoptionForm",
+        populate: [
+          {
+            path: "pet",
+            select: "_id name photos tokenMoney species breed age gender",
+          },
+          {
+            path: "shelter",
+            select: "_id name address avatar phoneNumber", 
+          },
+        ],
+      });
 
     return submissions;
   } catch (error) {
@@ -52,10 +63,13 @@ const createAdoptionSubmission = async (data) => {
 
 // check user submission exist
 const checkUserSubmittedForm = async (userId, adoptionFormId) => {
+
   const existingSubmission = await db.AdoptionSubmission.findOne({
     performedBy: userId,
     adoptionForm: adoptionFormId,
   });
+
+
 
   return existingSubmission; // true nếu đã submit, false nếu chưa
 };
@@ -98,7 +112,7 @@ const getSubmissionsByPetIds = async (petIds) => {
     // Tìm tất cả AdoptionForm có status là active và thuộc các petId
     const adoptionForms = await db.AdoptionForm.find({
       pet: { $in: petIds },
-      status: "active",
+      status: { $in: ["active", "adopted", "archived"] },
     }).select("_id");
 
     const formIds = adoptionForms.map((f) => f._id);
@@ -293,6 +307,11 @@ const selectInterviewSchedule = async (
     error.statusCode = 403;
     throw error;
   }
+    if (submission.interview.selectedSchedule) {
+    const error = new Error("Bạn đã chọn lịch phỏng vấn rồi, không thể chọn lại.");
+    error.statusCode = 400;
+    throw error;
+  }
 
   const selected = new Date(selectedSchedule);
 
@@ -386,36 +405,37 @@ const addInterviewNote = async (submissionId, note) => {
 
 const updateManySubmissionStatus = async (adopterIds, petId) => {
   try {
-    if (!petId) {
-      throw new Error("Thiếu id của thú nuôi!");
-    }
-
-
-    const adoptionForm = await db.AdoptionForm.findOne({
-      pet: petId,
-      status: "active",
-    });
-
-    if (!adoptionForm) {
-      throw new Error("Không tìm thấy đơn nhận nuôi!");
-    }
-
-    const result = await db.AdoptionSubmission.updateMany(
-      {
-        adoptionForm: adoptionForm._id,
-        performedBy: { $in: adopterIds },
-        status: {$ne: "rejected"},
-      },
-      {
-        $set: { status: "rejected" },
+    console.log("ngu"+adopterIds);
+    if(adopterIds && adopterIds.length != 0){
+      if (!petId) {
+        throw new Error("Thiếu id của thú nuôi!");
       }
-    );
-    return result;
+  
+      const adoptionForm = await db.AdoptionForm.findOne({
+        pet: petId,
+        status: "active",
+      });
+  
+      if (!adoptionForm) {
+        throw new Error("Không tìm thấy đơn nhận nuôi!");
+      }
+  
+      const result = await db.AdoptionSubmission.updateMany(
+        {
+          adoptionForm: adoptionForm._id,
+          performedBy: { $in: adopterIds },
+        },
+        {
+          $set: { status: "rejected" },
+        }
+      );
+      return result
+    }
+    return true;
   } catch (error) {
     throw error;
   }
 };
-
 
 const adoptionSubmissionService = {
   getAdtoptionRequestList,

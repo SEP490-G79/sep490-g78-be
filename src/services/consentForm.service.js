@@ -282,7 +282,7 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
         const updatedPet = await db.Pet.findOneAndUpdate(
           { _id: updatedConsentForm?.pet?._id },
-          { status: "adopted" },
+          { status: "adopted", adopter: updatedConsentForm?.adopter?._id },
           { new: true }
         );
         if (!updatedPet) {
@@ -292,27 +292,62 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
           throw new Error("Lỗi khi cập nhật trạng thái thú nuôi!");
         }
+        // console.log("ngu",(Array.isArray(otherAdopterIds) && otherAdopterIds.length > 0));
+        if ((Array.isArray(otherAdopterIds) && otherAdopterIds.length > 0)) {
+          const updatedSubmissions =
+            await adoptionSubmissionService.updateManySubmissionStatus(
+              otherAdopterIds,
+              updatedConsentForm?.pet?._id
+            );
 
-        await adoptionSubmissionService.updateManySubmissionStatus(
-          otherAdopterIds,
-          updatedConsentForm?.pet?._id
+          if (!updatedSubmissions) {
+            await db.Pet.findByIdAndUpdate(updatedConsentForm.pet._id, {
+              status: "available",
+              adopter: null,
+            });
+            await db.ConsentForm.findByIdAndUpdate(consentFormId, {
+              status: oldStatus,
+            });
+            throw new Error(
+              "Lỗi khi cập nhật trạng thái các người nhận nuôi khác!"
+            );
+          }
+        }
+
+        const updatedForm = await db.AdoptionForm.findOneAndUpdate(
+          { pet: updatedConsentForm?.pet?._id, status: "active" },
+          { status: "archived" },
+          { new: true }
         );
 
-        await notificationService.createNotification(
-          updatedConsentForm.createdBy._id,
-          otherAdopterIds,
-          `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
-          "adoption",
-          `/pet/${updatedConsentForm.pet._id}`
-        );
+        if (!updatedForm) {
+          await db.Pet.findOneAndUpdate(
+            { _id: updatedConsentForm?.pet?._id },
+            { status: "available", adopter: null },
+            { new: true }
+          );
 
-        await notificationService.createNotification(
-          updatedConsentForm.createdBy._id,
-          [updatedConsentForm.adopter._id],
-          `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
-          "adoption",
-          `/adoption-form/${updatedConsentForm.pet._id}`
-        );
+          await db.ConsentForm.findByIdAndUpdate(consentFormId, {
+            status: oldStatus,
+          });
+
+          throw new Error("Lỗi khi cập nhật trạng thái đơn đăng ký nhận nuôi!");
+        }
+        // await notificationService.createNotification(
+        //   updatedConsentForm.createdBy._id,
+        //   otherAdopterIds,
+        //   `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
+        //   "adoption",
+        //   `/pet/${updatedConsentForm.pet._id}`
+        // );
+
+        // await notificationService.createNotification(
+        //   updatedConsentForm.createdBy._id,
+        //   [updatedConsentForm.adopter._id],
+        //   `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
+        //   "adoption",
+        //   `/adoption-form/${updatedConsentForm.pet._id}`
+        // );
       } catch (rejectError) {
         await db.ConsentForm.findByIdAndUpdate(consentFormId, {
           status: oldStatus,
@@ -325,6 +360,7 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
     return updatedConsentForm;
   } catch (error) {
+    console.log('error',error)
     throw new Error(error.message || "Có lỗi xảy ra khi cập nhật trạng thái.");
   }
 };

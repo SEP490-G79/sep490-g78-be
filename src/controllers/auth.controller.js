@@ -202,14 +202,13 @@ const loginByGoogleCallbackUser = async (req, res, next) => {
     if (!isUserExist) {
         // user chua ton tai -> tao account moi trong database
         const newUser = new db.User({
-          username: googleUser.name,
           email: googleUser.email,
           password: hashedPassword,
           fullName: `${googleUser.given_name} ${googleUser.family_name}`,
           phoneNumber: null,
           address: null,
           roles: ["user"],
-          avatar: googleUser.picture || "https://i.pinimg.com/736x/2e/9b/34/2e9b3443e8afa8d383c132c7b3745d47.jpg",
+          avatar: googleUser.picture ,
           bio: null,
           background: null,
           warningCount: 0,

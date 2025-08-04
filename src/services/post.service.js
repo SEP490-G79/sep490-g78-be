@@ -85,10 +85,9 @@ const getPostDetail = async (postId) => {
       .populate("createdBy")
       .populate("likedBy")
       .populate("shelter");
-    if (!post) {
-      throw new Error("Post not found");
+   if (!post || post.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
-
     return {
       _id: post._id,
       title: post.title,
@@ -216,7 +215,9 @@ const editPost = async (userId, postId, postData, files) => {
 
   try {
     const post = await db.Post.findById(postId);
-    if (!post) throw new Error("Không tìm thấy bài viết");
+    if (!post || post.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
+    }
 
     // Nếu post thuộc shelter
     if (post.shelter) {
@@ -293,8 +294,8 @@ const editPost = async (userId, postId, postData, files) => {
 const deletePost = async (postId, userId) => {
   try {
     const post = await db.Post.findById(postId);
-    if (!post) {
-      throw new Error("Post not found");
+   if (!post || post.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
 
     if (post.shelter) {
@@ -318,21 +319,8 @@ const deletePost = async (postId, userId) => {
     await post.save();
 
     return {
-      success: true,
-      message: "Post deleted successfully",
-      data: {
-        _id: post._id,
-        title: post.title,
-        createdBy: {
-          _id: post.createdBy._id,
-          fullName: post.createdBy.fullName,
-          avatar: post.createdBy.avatar,
-        },
-        status: post.status,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-      },
-    };
+     post
+      }; 
   } catch (error) {
     throw error;
   }
@@ -341,9 +329,8 @@ const deletePost = async (postId, userId) => {
 const reactPost = async (postId, userId) => {
   try {
     const post = await db.Post.findOne({ _id: postId }).populate("shelter");
-
-    if (!post) {
-      throw new Error("Post not found");
+if (!post || post.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
 
     const hasLiked = post.likedBy.includes(userId);
