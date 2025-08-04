@@ -4,8 +4,10 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "nodemon src/server.js",
-    "payos": "nodemon src/payos/server.js",
+    "dev": "cross-env NODE_ENV=development nodemon src/server.js",
+    "dev:payos": "cross-env NODE_ENV=development nodemon src/payos/server.js",
+    "prod": "cross-env NODE_ENV=production node src/server.js",
+    "prod:payos": "cross-env NODE_ENV=production node src/payos/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -19,6 +21,7 @@
     "cloudinary": "^2.6.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
+    "cross-env": "^10.0.0",
     "date-fns": "^4.1.0",
     "dayjs": "^1.11.13",
     "dotenv": "^16.5.0",

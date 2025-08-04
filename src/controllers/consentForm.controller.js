@@ -192,7 +192,7 @@ async function changeFormStatusShelter(req, res, next) {
 async function changeFormStatusUser(req, res, next) {
   const { consentFormId } = req.params;
   const { id } = req.payload;
-  const { status } = req.body;
+  const { status, note } = req.body;
 
   
   
@@ -205,6 +205,7 @@ async function changeFormStatusUser(req, res, next) {
     const updatedConsentForm = await consentFormService.changeFormStatusUser(
       consentFormId,
       status,
+      note,
       id
     );
     res.status(200).json(updatedConsentForm);

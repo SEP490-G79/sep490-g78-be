@@ -293,7 +293,7 @@ const changeFormStatusShelter = async (consentFormId, status) => {
           throw new Error("Lỗi khi cập nhật trạng thái thú nuôi!");
         }
         // console.log("ngu",(Array.isArray(otherAdopterIds) && otherAdopterIds.length > 0));
-        if ((Array.isArray(otherAdopterIds) && otherAdopterIds.length > 0)) {
+        if (Array.isArray(otherAdopterIds) && otherAdopterIds.length > 0) {
           const updatedSubmissions =
             await adoptionSubmissionService.updateManySubmissionStatus(
               otherAdopterIds,
@@ -333,21 +333,21 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
           throw new Error("Lỗi khi cập nhật trạng thái đơn đăng ký nhận nuôi!");
         }
-        // await notificationService.createNotification(
-        //   updatedConsentForm.createdBy._id,
-        //   otherAdopterIds,
-        //   `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
-        //   "adoption",
-        //   `/pet/${updatedConsentForm.pet._id}`
-        // );
+        await notificationService.createNotification(
+          updatedConsentForm.createdBy._id,
+          otherAdopterIds,
+          `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
+          "adoption",
+          `/pet/${updatedConsentForm.pet._id}`
+        );
 
-        // await notificationService.createNotification(
-        //   updatedConsentForm.createdBy._id,
-        //   [updatedConsentForm.adopter._id],
-        //   `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
-        //   "adoption",
-        //   `/adoption-form/${updatedConsentForm.pet._id}`
-        // );
+        await notificationService.createNotification(
+          updatedConsentForm.createdBy._id,
+          [updatedConsentForm.adopter._id],
+          `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
+          "adoption",
+          `/adoption-form/${updatedConsentForm.pet._id}`
+        );
       } catch (rejectError) {
         await db.ConsentForm.findByIdAndUpdate(consentFormId, {
           status: oldStatus,
@@ -360,12 +360,12 @@ const changeFormStatusShelter = async (consentFormId, status) => {
 
     return updatedConsentForm;
   } catch (error) {
-    console.log('error',error)
+    console.log("error", error);
     throw new Error(error.message || "Có lỗi xảy ra khi cập nhật trạng thái.");
   }
 };
 
-const changeFormStatusUser = async (consentFormId, status, userId) => {
+const changeFormStatusUser = async (consentFormId, status, note, userId) => {
   try {
     const consentForm = await db.ConsentForm.findById(consentFormId);
 
@@ -387,9 +387,15 @@ const changeFormStatusUser = async (consentFormId, status, userId) => {
 
     const oldStatus = consentForm.status;
 
+    const existedShelter = await db.Shelter.findById(consentForm.shelter)
+    if (!existedShelter) {
+      throw new Error("Không tìm thấy trung tâm!");
+    }
+    const shelterMembers = existedShelter?.members?.map((m)=>m?._id)
+
     const updatedConsentForm = await db.ConsentForm.findByIdAndUpdate(
       consentFormId,
-      { status },
+      { status: status, note: note },
       { new: true }
     )
       .populate("shelter", "_id name address avatar status")
@@ -413,10 +419,10 @@ const changeFormStatusUser = async (consentFormId, status, userId) => {
 
         await notificationService.createNotification(
           updatedConsentForm.createdBy._id,
-          [updatedConsentForm.adopter._id],
+          [...shelterMembers],
           `Người nhận nuôi bạn ${updatedConsentForm.pet.name} đã hủy yêu cầu nhận nuôi!`,
           "adoption",
-          `/adoption-form/${updatedConsentForm.pet._id}`
+          `/shelters/${consentForm?.shelter?._id}/management/consent-forms/${updatedConsentForm?._id}`
         );
       } catch (err) {
         await db.ConsentForm.findByIdAndUpdate(consentFormId, {
@@ -429,20 +435,20 @@ const changeFormStatusUser = async (consentFormId, status, userId) => {
     if (status == "accepted") {
       await notificationService.createNotification(
         updatedConsentForm.createdBy._id,
-        [updatedConsentForm.adopter._id],
+        [...shelterMembers],
         `Người nhận nuôi bạn ${updatedConsentForm.pet.name} đã chấp nhận bản đồng ý nhận nuôi!`,
         "adoption",
-        `/adoption-form/${updatedConsentForm.pet._id}`
+        `/shelters/${consentForm?.shelter?._id}/management/consent-forms/${updatedConsentForm?._id}`
       );
     }
 
     if (status == "rejected") {
       await notificationService.createNotification(
         updatedConsentForm.createdBy._id,
-        [updatedConsentForm.adopter._id],
+        [...shelterMembers],
         `Người nhận nuôi bạn ${updatedConsentForm.pet.name} đã từ chối bản đồng ý nhận nuôi! Liên hệ người nhận nuôi để sửa lại các thông tin cần thiết!`,
         "adoption",
-        `/adoption-form/${updatedConsentForm.pet._id}`
+        `/shelters/${consentForm?.shelter?._id}/management/consent-forms/${updatedConsentForm?._id}`
       );
     }
 
