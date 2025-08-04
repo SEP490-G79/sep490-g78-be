@@ -4,10 +4,13 @@
   "description": "",
   "main": "server.js",
   "scripts": {
-    "start": "nodemon src/server.js",
-    "payos": "nodemon src/payos/server.js",
+    "dev": "cross-env NODE_ENV=development nodemon src/server.js",
+    "dev:payos": "cross-env NODE_ENV=development nodemon src/payos/server.js",
+    "prod": "cross-env NODE_ENV=production node src/server.js",
+    "prod:payos": "cross-env NODE_ENV=production node src/payos/server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
+  
   "keywords": [],
   "author": "",
   "license": "ISC",
@@ -36,5 +39,8 @@
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "socket.io": "^4.8.1"
+  },
+  "devDependencies": {
+    "cross-env": "^10.0.0"
   }
 }
