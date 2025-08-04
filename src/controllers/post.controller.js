@@ -109,29 +109,29 @@ const reactPost = async (req, res) => {
   }
 };
 
-const reportPost = async (req, res) => {
-  const userId = req.payload.id;
-  const { reason } = req.body;
+// const reportPost = async (req, res) => {
+//   const userId = req.payload.id;
+//   const { reason } = req.body;
 
-  if (!reason || reason.trim() === "") {
-    return res.status(400).json({ message: "Lý do báo cáo không được để trống." });
-  }
+//   if (!reason || reason.trim() === "") {
+//     return res.status(400).json({ message: "Lý do báo cáo không được để trống." });
+//   }
 
-  try {
-    const report = await postService.reportPost(userId, req.params.postId, reason, req.files);
-    res.status(201).json({
-      message: "Báo cáo bài viết thành công",
-      data: report,
-    });
-  } catch (error) {
-    if (req.files?.length) {
-      await Promise.allSettled(
-        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
-      );
-    }
-    res.status(400).json({ message: error.message });
-  }
-};
+//   try {
+//     const report = await postService.reportPost(userId, req.params.postId, reason, req.files);
+//     res.status(201).json({
+//       message: "Báo cáo bài viết thành công",
+//       data: report,
+//     });
+//   } catch (error) {
+//     if (req.files?.length) {
+//       await Promise.allSettled(
+//         req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+//       );
+//     }
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
 const createComment = async (req, res) => {
   try {
@@ -201,7 +201,7 @@ const postController = {
   editPost,
   deletePost,
   reactPost,
-  reportPost,
+  //reportPost,
   createComment,
   editComment,
   removeComment,

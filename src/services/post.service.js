@@ -118,7 +118,6 @@ const getPostDetail = async (postId) => {
 
 const createPost = async (userId, postData, files) => {
   const uploadedPhotoUrls = [];
-  const tempFilePaths = [];
   const shelterId = postData.shelter;
 
   try {
@@ -152,7 +151,6 @@ const createPost = async (userId, postData, files) => {
     // Upload ảnh lên Cloudinary
     if (Array.isArray(files)) {
       for (const file of files) {
-        tempFilePaths.push(file.path);
         try {
           const result = await cloudinary.uploader.upload(file.path, {
             folder: "posts",
@@ -204,7 +202,6 @@ const createPost = async (userId, postData, files) => {
 };
 
 const editPost = async (userId, postId, postData, files) => {
-  const tempFilePaths = [];
   const uploadedPhotos = [];
 
   try {
@@ -235,7 +232,6 @@ const editPost = async (userId, postId, postData, files) => {
 
     if (Array.isArray(files)) {
       for (const file of files) {
-        tempFilePaths.push(file.path);
         try {
           const result = await cloudinary.uploader.upload(file.path, {
             folder: "posts",
@@ -370,69 +366,67 @@ const reactPost = async (postId, userId) => {
   }
 };
 
-const reportPost = async (userId, postId, reason, files) => {
-  const tempFilePaths = [];
-  const uploadedPhotos = [];
+// const reportPost = async (userId, postId, reason, files) => {
+//   const uploadedPhotos = [];
 
-  const post = await db.Post.findById(postId).populate("createdBy");
+//   const post = await db.Post.findById(postId).populate("createdBy");
 
-  if (!post || post.status !== "active") {
-    throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
-  }
-  if (post.createdBy._id.toString() === userId.toString()) {
-    throw new Error("Bạn không thể báo cáo bài viết của chính mình.");
-  }
-  if (!reason || reason.trim() === "") {
-    throw new Error("Lý do báo cáo không được để trống.");
-  }
-  if (reason.length > 500) {
-    throw new Error("Lý do báo cáo không được quá 500 ký tự.");
-  }
+//   if (!post || post.status !== "active") {
+//     throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
+//   }
+//   if (post.createdBy._id.toString() === userId.toString()) {
+//     throw new Error("Bạn không thể báo cáo bài viết của chính mình.");
+//   }
+//   if (!reason || reason.trim() === "") {
+//     throw new Error("Lý do báo cáo không được để trống.");
+//   }
+//   if (reason.length > 500) {
+//     throw new Error("Lý do báo cáo không được quá 500 ký tự.");
+//   }
 
-  try {
-    if (Array.isArray(files) && files.length > 0) {
-      for (const file of files) {
-        tempFilePaths.push(file.path);
-        try {
-          const result = await cloudinary.uploader.upload(file.path, {
-            folder: "reports",
-            resource_type: "image",
-          });
-          uploadedPhotos.push(result.secure_url);
-          fs.unlink(file.path, (err) => {
-            if (err) console.error("Lỗi xóa ảnh tạm:", err);
-          });
-        } catch (uploadError) {
-          console.error("Upload error:", uploadError);
-          throw new Error("Lỗi khi upload ảnh báo cáo");
-        }
-      }
-    }
+//   try {
+//     if (Array.isArray(files) && files.length > 0) {
+//       for (const file of files) {
+//         try {
+//           const result = await cloudinary.uploader.upload(file.path, {
+//             folder: "reports",
+//             resource_type: "image",
+//           });
+//           uploadedPhotos.push(result.secure_url);
+//           fs.unlink(file.path, (err) => {
+//             if (err) console.error("Lỗi xóa ảnh tạm:", err);
+//           });
+//         } catch (uploadError) {
+//           console.error("Upload error:", uploadError);
+//           throw new Error("Lỗi khi upload ảnh báo cáo");
+//         }
+//       }
+//     }
 
-    const newReport = await db.Report.create({
-      reportType: "post",
-      postReported: postId,
-      reportedBy: userId,
-      reason,
-      photos: uploadedPhotos,
-      status: "pending",
-    });
+//     const newReport = await db.Report.create({
+//       reportType: "post",
+//       postReported: postId,
+//       reportedBy: userId,
+//       reason,
+//       photos: uploadedPhotos,
+//       status: "pending",
+//     });
 
-    const post = await db.Post.findById(postId).populate("createdBy");
+//     const post = await db.Post.findById(postId).populate("createdBy");
 
-    await NotificationService.createNotification(
-      userId,
-      [post.createdBy._id],
-      `Bạn đã báo cáo bài viết: ${post.title}`,
-      "system",
-      `/newfeed?postId=${post._id}`
-    );
+//     await NotificationService.createNotification(
+//       userId,
+//       [post.createdBy._id],
+//       `Bạn đã báo cáo bài viết: ${post.title}`,
+//       "system",
+//       `/newfeed?postId=${post._id}`
+//     );
 
-    return newReport;
-  } catch (error) {
-    throw error;
-  }
-};
+//     return newReport;
+//   } catch (error) {
+//     throw error;
+//   }
+// };
 
 const createComment = async ({ postId, userId, message }) => {
   try {
@@ -548,7 +542,7 @@ const postService = {
   editPost,
   deletePost,
   reactPost,
-  reportPost,
+  // reportPost,
   createComment,
   editComment,
   removeComment,

@@ -1,8 +1,8 @@
-const {Report, User, Post, Blog, Shelter} = require("../models/index")
-const {cloudinary} = require("../configs/cloudinary")
-const fs = require("fs")
-const {createNotification} = require("./notification.service")
-const {mailer} = require("../configs/index")
+const { Report, User, Post, Blog, Shelter } = require("../models/index");
+const { cloudinary } = require("../configs/cloudinary");
+const fs = require("fs");
+const { createNotification } = require("./notification.service");
+const { mailer } = require("../configs/index");
 
 const safeUser = (user) => ({
   _id: user?._id ?? null,
@@ -40,8 +40,11 @@ const safeBlog = (blog) => {
     title: blog.title || "",
     description: blog.description || "",
     content: blog.content || "",
-    thumbnail_url: blog.thumbnail_url || "https://drmango.vn/img/noimage-600x403-1.jpg",
-    status: ["moderating", "published", "rejected", "deleted"].includes(blog.status)
+    thumbnail_url:
+      blog.thumbnail_url || "https://drmango.vn/img/noimage-600x403-1.jpg",
+    status: ["moderating", "published", "rejected", "deleted"].includes(
+      blog.status
+    )
       ? blog.status
       : "moderating",
     createdAt: blog.createdAt || null,
@@ -51,15 +54,18 @@ const safeBlog = (blog) => {
   };
 };
 
-
 //USER
 async function reportUser(reporterId, { userId, reportType, reason }, files) {
   try {
-    if(reporterId === userId){
+    if (reporterId === userId) {
       throw new Error("Không thể tự báo cáo chính mình");
     }
 
-    const report = await Report.findOne({ reportedBy: reporterId, user: userId, status: "pending" });
+    const report = await Report.findOne({
+      reportedBy: reporterId,
+      user: userId,
+      status: "pending",
+    });
     if (report) {
       throw new Error("Vui lòng chờ duyệt báo cáo trước đó");
     }
@@ -68,8 +74,8 @@ async function reportUser(reporterId, { userId, reportType, reason }, files) {
     if (!reportedUser) {
       throw new Error("Không tìm thấy user");
     }
-    if(reportedUser.status !== "active"){
-      throw new Error("Chỉ có thể báo cáo tài khoản đang ở trạng thái active")
+    if (reportedUser.status !== "active") {
+      throw new Error("Chỉ có thể báo cáo tài khoản đang ở trạng thái active");
     }
 
     const hasPhotos = Array.isArray(files?.photos) && files.photos.length > 0;
@@ -96,7 +102,8 @@ async function reportUser(reporterId, { userId, reportType, reason }, files) {
 
         for (const filePath of tempFilePaths) {
           fs.unlink(filePath, (err) => {
-            if (err) console.error("Error deleting file in catch:", filePath, err);
+            if (err)
+              console.error("Error deleting file in catch:", filePath, err);
           });
         }
 
@@ -123,20 +130,27 @@ async function reportUser(reporterId, { userId, reportType, reason }, files) {
 }
 async function reportPost(reporterId, { postId, reportType, reason }, files) {
   try {
-    const report = await Report.findOne({ reportedBy: reporterId, post: postId, status: "pending" });
+    const report = await Report.findOne({
+      reportedBy: reporterId,
+      post: postId,
+      status: "pending",
+    });
     if (report) {
       throw new Error("Vui lòng chờ duyệt báo cáo trước đó");
     }
 
     const reportedPost = await Post.findById(postId);
-    if (!reportedPost) {
-      throw new Error("Không tìm thấy post");
+    if (!reportedPost || reportedPost.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
     if(String(reportedPost.createdBy._id) === String(reporterId)){
       throw new Error("Không thể tự báo cáo bài viết của chính mình")
     }
-    if(reportedPost.status !== "active"){
-      throw new Error("Chỉ có thể báo bài viết đang ở trạng thái active")
+    if (!reason || reason.trim() === "") {
+      throw new Error("Lý do báo cáo không được để trống.");
+    }
+    if (reason.length > 500) {
+      throw new Error("Lý do báo cáo không được quá 500 ký tự.");
     }
 
     let tempFilePaths = [];
@@ -164,7 +178,8 @@ async function reportPost(reporterId, { postId, reportType, reason }, files) {
         console.error("Cloudinary Upload Error:", error);
         for (const filePath of tempFilePaths) {
           fs.unlink(filePath, (err) => {
-            if (err) console.error("Error deleting file in catch:", filePath, err);
+            if (err)
+              console.error("Error deleting file in catch:", filePath, err);
           });
         }
         throw new Error("Lỗi khi tải lên ảnh report. Vui lòng thử lại.");
@@ -198,8 +213,10 @@ async function reportBlog(reporterId, { blogId, reportType, reason }, files) {
     if (String(reportedBlog.createdBy._id) === String(reporterId)) {
       throw new Error("Không thể tự báo cáo bài viết blog của chính mình");
     }
-    if(reportedBlog.status !== "published"){
-      throw new Error("Chỉ có thể báo cáo bài viết blog đang ở trạng thái published")
+    if (reportedBlog.status !== "published") {
+      throw new Error(
+        "Chỉ có thể báo cáo bài viết blog đang ở trạng thái published"
+      );
     }
 
     // 2. Kiểm tra đã tồn tại báo cáo đang chờ hay chưa
@@ -262,8 +279,6 @@ async function reportBlog(reporterId, { blogId, reportType, reason }, files) {
   }
 }
 
-
-
 //ADMIN
 async function getUserReports() {
   try {
@@ -286,7 +301,6 @@ async function getUserReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
@@ -312,7 +326,6 @@ async function getPendingUserReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
@@ -495,7 +508,7 @@ async function getPostReports() {
   try {
     const reports = await Report.find({
       reportType: "post",
-      status: {$ne: "pending"},
+      status: { $ne: "pending" },
     })
       .populate("post reportedBy reviewedBy")
       .populate({
@@ -525,7 +538,6 @@ async function getPostReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
@@ -564,7 +576,6 @@ async function getPendingPostReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
@@ -589,10 +600,13 @@ async function reviewPostReport(adminId, reportId, decision = "reject") {
 
     // Xử lý từ chối báo cáo
     if (decision === "reject") {
-      await Report.findByIdAndUpdate(reportId, {status: "rejected", reviewedBy: adminId});
+      await Report.findByIdAndUpdate(reportId, {
+        status: "rejected",
+        reviewedBy: adminId,
+      });
     } else {
       // Xử lý chấp thuận báo cáo
-      await Post.findByIdAndUpdate(reportedPost._id, {status: "hidden"})
+      await Post.findByIdAndUpdate(reportedPost._id, { status: "hidden" });
       await Report.updateMany(
         { post: report.post._id, status: "pending" },
         {
@@ -687,7 +701,7 @@ async function getBlogReports() {
   try {
     const reports = await Report.find({
       reportType: "blog",
-      status: {$ne: "pending"},
+      status: { $ne: "pending" },
     })
       .populate("blog reportedBy reviewedBy")
       .populate({
@@ -712,7 +726,6 @@ async function getBlogReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
@@ -746,7 +759,6 @@ async function getPendingBlogReports() {
       createdAt: report.createdAt,
       updatedAt: report.updatedAt,
     }));
-
   } catch (error) {
     throw error;
   }
