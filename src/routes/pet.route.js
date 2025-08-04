@@ -9,6 +9,7 @@ const {
   isShelterStaff,
   isShelterMember,
 } = require("../middlewares/shelter.middleware");
+const cloudinary = require("../configs/cloudinary");
 
 petRouter.use(bodyParser.json());
 petRouter.get("/get-pet-list", petController.getPetList);
@@ -17,6 +18,11 @@ petRouter.get(
   "/get-by-shelter/:shelterId",
   [verifyAccessToken, isShelterStaff],
   petController.getAllPets
+);
+petRouter.get(
+  "/get-by-shelter-for-submission/:shelterId",
+  [verifyAccessToken, isShelterStaff],
+  petController.getAllPetsForSubmission
 );
 petRouter.post(
   "/createPet/:shelterId",
@@ -30,10 +36,10 @@ petRouter.put(
   petController.updatePet
 );
 
-petRouter.delete(
+petRouter.patch(
   "/delete/:petId/:shelterId",
   [verifyAccessToken, isShelterStaff],
-  petController.deletePet
+  petController.disablePet
 );
 petRouter.get(
   "/get-adoptionForms-by-petId/:petId",
@@ -50,5 +56,10 @@ petRouter.get(
   petController.getAdoptedPetbyUser
 );
 petRouter.post("/ai-analyze", petController.analyzePetImage);
+petRouter.post(
+  "/search-by-ai",
+  cloudinary.upload.single("imageRaw"),
+  petController.searchPetByImage
+);
 
 module.exports = petRouter;

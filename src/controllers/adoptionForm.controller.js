@@ -53,6 +53,7 @@ const createForm = async (req, res, next) => {
     const existingForm = await db.AdoptionForm.findOne({
       pet: petId,
       shelter: shelterId,
+      status:{$ne:"archived"}
     });
     if (existingForm) {
       return res.status(400).json({
@@ -128,12 +129,40 @@ const createFormByTemplate = async (req, res, next) => {
   }
 };
 
+
+
 async function editForm(req, res, next) {
+  const { formId } = req.params;
+  const formData = req.body;
+  const {shelterId} = req.params;
+
+  try {
+    const existingForm = await db.AdoptionForm.findOne({
+      _id: formId,
+      shelter: shelterId,
+    });
+    if (!existingForm) {
+      return res.status(404).json({ message: "Form không tồn tại!" });
+    }
+    if (existingForm.status != "draft") {
+      return res.status(400).json({
+        message: "Không thể chỉnh sửa câu hỏi! Vui lòng chuyển form về trạng thái nháp trước khi chỉnh sửa câu hỏi.",
+      });
+    }
+    const updatedForm = await adoptionFormService.editForm(formId, formData);
+    res.status(200).json(updatedForm);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
+async function changeFormStatus(req, res, next) {
   const { formId } = req.params;
   const formData = req.body;
 
   try {
-    const updatedForm = await adoptionFormService.editForm(formId, formData);
+
+    const updatedForm = await adoptionFormService.changeFormStatus(formId, formData);
     res.status(200).json(updatedForm);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -156,6 +185,20 @@ async function editFormQuestions(req, res, next) {
   }
 
   try {
+    const existingForm = await db.AdoptionForm.findOne({
+      _id: formId,
+      shelter: shelterId,
+    });
+    if (!existingForm) {
+      return res.status(404).json({ message: "Form không tồn tại!" });
+    }
+    if (existingForm.status != "draft") {
+      return res.status(400).json({
+        message: "Không thể chỉnh sửa câu hỏi! Vui lòng chuyển form về trạng thái nháp trước khi chỉnh sửa câu hỏi.",
+      });
+    }
+
+
     const savedQuestions = await questionService.editListQuestions(
       req.body.questions
     );
@@ -191,7 +234,7 @@ const getFormByPetId = async (req, res, next) => {
     const { petId } = req.params;
     const selectedPet = await db.Pet.findOne({
       _id: petId,
-      status: "available",
+      status:  { $in: ["available", "adopted", "booking", "delivered"] },
     });
     if (!selectedPet) {
       return res
@@ -211,6 +254,8 @@ const adoptionFormController = {
   getFormsByShelter,
   createForm,
   editForm,
+  changeFormStatus,
+  createFormByTemplate,
   editFormQuestions,
   deleteForm,
   getFormByPetId,

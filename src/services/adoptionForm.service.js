@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../models/index");
+const questionService = require("./question.service");
 
 async function getFormsByShelter(shelterId) {
   try {
@@ -70,7 +71,9 @@ async function editForm(formId, formData) {
     if (!form) {
       throw new Error("Không tìm thấy form");
     }
-
+    if (form.status != "draft") {
+      throw new Error("Chỉ có thể chỉnh sửa form ở trạng thái nháp");
+    }
     const updateForm = await db.AdoptionForm.findOneAndUpdate(
       { _id: formId },
       formData,
@@ -80,11 +83,11 @@ async function editForm(formId, formData) {
       .populate("questions")
       .populate("createdBy", "fullName email avatar")
       .lean();
-    
+
     if (!updateForm) {
       throw new Error("Lỗi không tìm thấy form đã cập nhật");
     }
-    
+
     return {
       ...updateForm,
       shelter: updateForm?.shelter?.name,
@@ -92,41 +95,121 @@ async function editForm(formId, formData) {
   } catch (error) {
     throw error;
   }
+}
 
+async function changeFormStatus(formId, formData) {
+  try {
+    const updateForm = await db.AdoptionForm.findByIdAndUpdate(
+      formId,
+      { status: formData.status },
+      { new: true }
+    );
+    if (!updateForm)
+      throw new Error(
+        "Lỗi khi cập nhập trạng thái form hoặc form không tồn tại!"
+      );
+
+    const petUpdate = await db.Pet.findOneAndUpdate(
+      { _id: updateForm.pet._id, status: { $ne: "adopted" } },
+      { status: formData.status == "active" ? "available" : "unavailable" },
+      { new: true }
+    );
+    if (!petUpdate) {
+      await db.AdoptionForm.findByIdAndUpdate(formId, { status: form.status });
+      throw new Error("Lỗi khi cập nhập trạng thái thú nuôi!");
+    }
+
+    return updateForm;
+  } catch (err) {
+    throw err;
+  }
 }
 
 async function deleteForm(formId) {
-    try {
-        const formExists = await db.AdoptionForm.findById(formId);
-        if (!formExists) {
-            throw new Error("Không tìm thấy form!");
-        }
-        if (formExists.status == "active") {
-            throw new Error("Không thể xóa form!");
-        }
-        const form = await db.AdoptionForm.findByIdAndDelete(formId);
-        return form;
-    } catch (error) {
-        throw error;
+  try {
+    const formExists = await db.AdoptionForm.findById(formId);
+    if (!formExists) {
+      throw new Error("Không tìm thấy form!");
     }
+    if (formExists.status == "draft") {
+      await db.AdoptionForm.findByIdAndDelete(formId);
+    } else {
+      throw new Error("Không thể xóa form!");
+    }
+    return "Xóa form thành công!";
+  } catch (error) {
+    throw error;
+  }
 }
 
+async function duplicateForm(petId, shelterId) {
+  const selectedShelter = await db.Shelter.findOne({
+    _id: shelterId,
+    status: "active",
+  });
+  if (!selectedShelter) {
+    return new Error("Trung tâm không tồn tại hoặc không hoạt động!");
+  }
+  const oldForm = await db.AdoptionForm.findOne({ pet: petId })
+    .populate("questions")
+    .lean();
+  if (!oldForm) {
+    return new Error("Đơn nhận nuôi không tồn tại!");
+  }
+  try {
+    const dataQuestions = oldForm.questions.map(({ _id, ...question }) => {
+      return {
+        ...question,
+      };
+    });
+    const savedQuestions = await questionService.editListQuestions(
+      dataQuestions
+    );
+    newData = {
+      title: `${oldForm.title}`,
+      pet: oldForm.pet,
+      description: oldForm.description,
+      questions: savedQuestions.map((question) => question._id),
+    };
+    const newForm = await adoptionFormService.createForm(
+      shelterId,
+      petId,
+      newData,
+      oldForm.createdBy
+    );
+
+    return newForm;
+  } catch (error) {
+    throw error;
+  }
+}
 
 // get form by petId
 async function getFormsByPetId(petId) {
   try {
-    const form = await db.AdoptionForm.findOne({ pet: petId, status: "active" })
+    if (!petId) {
+    return new Error("Không có id pet!");
+  }
+
+  const pet = await db.Pet.findOne({_id:petId, status: { $ne: "draft" }});
+  if (!pet) {
+    return new Error("Không tìm thấy thú nuôi!");
+  }
+
+  const adoptStatus = pet.status == "adopted" ? "archived" : "active";
+
+    const form = await db.AdoptionForm.findOne({ pet: petId, status: adoptStatus  })
+      .sort({ createdAt: -1 })
       .populate("pet")
       .populate("createdBy", "fullName email avatar")
       .populate("shelter", "name")
       .populate("questions")
       .lean();
-  
-      return {
-        ...form,
-        shelter: form?.shelter?.name,
-      
-      };
+
+    return {
+      ...form,
+      shelter: form?.shelter?.name,
+    };
   } catch (error) {
     throw error;
   }
@@ -136,9 +219,10 @@ const adoptionFormService = {
   getFormsByShelter,
   createForm,
   editForm,
+  changeFormStatus,
+  duplicateForm,
   deleteForm,
-  getFormsByPetId
-
+  getFormsByPetId,
 };
 
 module.exports = adoptionFormService;

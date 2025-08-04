@@ -59,6 +59,7 @@ const petSchema = new mongoose.Schema(
       {
         type: String,
         required: true,
+        default: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884243/871b475bfbb2cb2274f44a01cc02a18a_caazkd.jpg",
       },
     ],
     foundLocation: {

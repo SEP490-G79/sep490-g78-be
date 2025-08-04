@@ -29,9 +29,22 @@ const getAllDonations = async (req, res) => {
   }
 }
 
+//ADMIN
+const getMonthlyDonationStats = async (req, res) => {
+  try {
+    const donations = await donationService.getMonthlyDonationStats();
+    res.status(200).json(donations);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
 const donationController = {
     saveDonation,
     getDonationsHistory,
     getAllDonations,
+
+    //ADMIN
+    getMonthlyDonationStats,
 }
 module.exports = donationController;

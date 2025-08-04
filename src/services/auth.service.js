@@ -3,6 +3,8 @@ const jwt = require("jsonwebtoken");
 const {User} = require("../models/");
 const {bcryptUtils, jwtUtils, redisUtils} = require("../utils")
 require("../middlewares/auth.middleware");
+const mailer = require("../configs/mailer.config")
+const bcrypt = require("bcrypt");
 
 
 const register = async (req) => {
@@ -23,9 +25,9 @@ const register = async (req) => {
         phoneNumber: null,
         address: null,
         roles: ["user"],
-        avatar: "https://i.pinimg.com/736x/2e/9b/34/2e9b3443e8afa8d383c132c7b3745d47.jpg",
+        avatar: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753883950/1aa8d75f3498784bcd2617b3e3d1e0c4_fvgwde.jpg",
         bio: null,
-        background: null,
+        background: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884093/2746ae1e9f480a1a5c459355340449aa_zmqvf0.jpg",
         warningCount: 0,
         teams: [],
         googleId: null,
@@ -192,6 +194,90 @@ const refreshAccessToken = async (req, res) => {
 };
 
 
+const forgotPassword = async (email) => {
+  const user = await User.findOne({ email });
+  if (!user) {
+    throw new Error("Không tìm thấy tài khoản")
+  }
+  if(user.status === "banned"){
+    throw new Error("Không thể đặt lại mật khẩu cho tài khoản đã bị ban")
+  }
+  if(user.googleId && user.googleId !== null){
+    throw new Error("Không thể đặt lại mật khẩu cho tài khoản đăng kí bằng google")
+  }
+  // Tạo JWT token có thời hạn 10 phút
+  const token = jwt.sign(
+    { id: user._id, email: user.email },
+    process.env.JWT_SECRET,
+    { expiresIn: "10m" }
+  );
+  // Gửi email mà không hiển thị token trong URL
+  const link = `${process.env.FE_URL_USER}/forgot-password?tempToken=${token}`;
+  const subject = "Yêu cầu đặt lại mật khẩu tài khoản";
+const body = `
+  <div style="font-family: Arial, sans-serif; padding: 20px;">
+    <p>Xin chào,</p>
+    <p>Chúng tôi đã nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Vui lòng nhấn nút bên dưới để tiếp tục:</p>
+    <a href="${link}" style="display: inline-block; padding: 10px 20px; color: #fff; background: #1890ff; text-decoration: none; border-radius: 5px;">
+      Đặt lại mật khẩu
+    </a>
+    <p style="margin-top: 20px;">Liên kết này có hiệu lực trong vòng 10 phút.</p>
+    <p>Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này.</p>
+    <p>Trân trọng,<br />PawShelter</p>
+  </div>
+`;
+
+  await mailer.sendEmail(email, subject, body);
+  return { message: "Đã gửi email, vui lòng check inbox để đặt lại mật khẩu!", token }
+};
+
+const resetPassword = async (password, confirmPassword, token) => {
+  console.log(password, confirmPassword, token)
+  if (!token) {
+    throw new Error("Thiếu token đặt lại mật khẩu")
+  }
+
+  if(!typeof password === "string" || password.trim().length < 8){
+    throw new Error("Mật khẩu ít nhất phải chứa 8 kí tự và không có khoảng trống")
+  }
+    // Kiểm tra mật khẩu nhập lại
+  if (password !== confirmPassword) {
+    throw new Error("Mật khẩu nhập lại không khớp")
+  }
+
+  // Giải mã token JWT
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (error) {
+    if (error.name === "TokenExpiredError") {
+      throw new Error("Liên kết đặt lại mật khẩu đã hết hạn. Vui lòng yêu cầu lại.");
+    }
+    throw new Error("Token không hợp lệ.");
+  }
+
+  // Tìm user theo ID từ token
+  const user = await User.findById(decoded.id);
+  if (!user) {
+    throw new Error("Tài khoản không tồn tại trong hệ thống!")
+  }
+  if(user.status === "banned"){
+    throw new Error("Không thể đặt lại mật khẩu của tài khoản bị ban!")
+  }
+  // Hash mật khẩu mới
+  const encryptedPassword = await bcrypt.hash(password, 10);
+
+  // Cập nhật mật khẩu mới vào database
+  await User.updateOne(
+    { _id: decoded.id },
+    { $set: { password: encryptedPassword } }
+  );
+
+  return {
+    message: "Thay đổi mật khẩu thành công",
+  };
+};
+
 
 const authService = {
     login,
@@ -199,6 +285,8 @@ const authService = {
     getUserByAccessToken,
     getRefreshToken,
     refreshAccessToken,logout,
+    forgotPassword,
+    resetPassword,
 }
 
 module.exports = authService;

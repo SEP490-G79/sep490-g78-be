@@ -19,11 +19,7 @@ const getListBlogs = async (req, res) => {
         message: error.message || "Không có bài viết nào",
       });
     }
-    res.status(200).json({
-      success: true,
-      message: "Danh sách bài viết",
-      data: blogs,
-    });
+    res.status(200).json(blogs);
   } catch (error) {
     res.status(400).json({
       success: false,
@@ -32,32 +28,20 @@ const getListBlogs = async (req, res) => {
   }
 };
 
-const getBlogById = async (req, res) => {
-  const blogId = req.params.id;
-  if (!blogId) {
-    return res.status(400).json({
-      success: false,
-      message: error.message || "ID bài viết không được cung cấp",
-    });
-  }
+const getPublishedBlogById = async (req, res) => {
   try {
-    const blog = await blogService.getBlogById(blogId);
-    if (!blog) {
-      return res.status(404).json({
-        success: false,
-        message: error.message || "Bài viết không tồn tại",
-      });
-    }
-    res.status(200).json({
-      success: true,
-      message: "Chi tiết bài viết",
-      data: blog,
-    });
+    const blog = await blogService.getPublishedBlogById(req.params.blogId);
+    res.status(200).json(blog);
   } catch (error) {
-    res.status(400).json({
-      success: false,
-      message: error.message || "Lỗi khi lấy chi tiết bài viết",
-    });
+    res.status(400).json({ message: error.message });
+  }
+};
+const getBlogById = async (req, res) => {
+  try {
+    const blog = await blogService.getBlogById(req.params.blogId);
+    res.status(200).json(blog);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -109,6 +93,7 @@ const createBlog = async (req, res) => {
 
   try {
     const newBlog = await blogService.createBlog(
+      req.payload.id,
       { title, description, content },
       shelterId,
       file
@@ -189,6 +174,15 @@ const deleteBlog = async (req, res) => {
     });
   }
 };
+const getRecommendedBlogs = async (req, res) => {
+  try {
+    const { blogId, shelterId } = req.params;
+    const blogs = await blogService.getRecommendedBlogs(blogId, shelterId);
+    res.status(200).json(blogs);
+  } catch (error) {
+    res.status(400).json({message: error.message});
+  };
+}
 
 
 
@@ -202,10 +196,18 @@ const getAllBlogs = async (req, res) => {
     res.status(400).json({ message: error.message });
   }
 };
-const approveBlog = async (req, res) => {
+const moderateBlog = async (req, res) => {
   try {
-    const response = await blogService.approveBlog(req.params.blogId)
+    const response = await blogService.moderateBlog(req.params.blogId, req.params.decision);
     res.status(200).json(response);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+const getModeratingBlogs = async (req, res) => {
+  try {
+    const blogs = await blogService.getModeratingBlogs();
+    res.status(200).json(blogs);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -215,16 +217,19 @@ const approveBlog = async (req, res) => {
 const blogController = {
     //USER
     getListBlogs,
+    getPublishedBlogById,
     getBlogById,
     getListBlogsByShelter,
-    getAllBlogs,
     getBlogsByShelter,
     createBlog,
     updateBlog,
     deleteBlog,
+    getRecommendedBlogs,
 
     //ADMIN
-    approveBlog,
+    moderateBlog,
+    getModeratingBlogs,
+    getAllBlogs,
 };
 
 module.exports = blogController;

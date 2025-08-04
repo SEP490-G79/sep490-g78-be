@@ -7,7 +7,7 @@ const { verifyAccessToken, verifyGoogleCallback, verifyGoogleCallbackAdmin } = r
 const authMiddleware = require("../middlewares/auth.middleware");
 
 authRouter.use(bodyParser.json());
-authRouter.post("/forgot-password",
+authRouter.post("/forgot-password/:email",
     authController.forgotPassword
 )
 authRouter.post("/reset-password",

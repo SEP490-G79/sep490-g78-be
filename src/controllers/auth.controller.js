@@ -8,37 +8,12 @@ const { mailer } = require("../configs");
 
 
 async function forgotPassword(req, res) {
-    const { email } = req.body;
     try {
-        const user = await db.User.findOne({ email });
-        if (!user) {
-            return res.status(404).json({ status: "User or Email not found!" });
-        }
-
-        // Tạo JWT token có thời hạn 10 phút
-        const token = jwt.sign(
-            { id: user._id, email: user.email },
-            process.env.JWT_SECRET,
-            { expiresIn: "10m" }
-        );
-
-        // Gửi email mà không hiển thị token trong URL
-        const link = `${process.env.FE_URL_USER}/reset-password`
-        const subject = "Reset Your Password";
-        const body = `
-        <div style="font-family: Arial, sans-serif; padding: 20px;">
-            <p>Click the button below to reset your password:</p>
-            <a href=${link} style="display: inline-block; padding: 10px 20px; color: #fff;background: #1890ff; text-decoration: none; border-radius: 5px;">
-                Reset password
-            </a>
-            <p>If you didn't request this, please ignore this email.</p>
-        </div>
-    `;
-        await mailer.sendEmail(email, subject, body);
-        res.json({ status: "Email sent, check your inbox!", token });
+        const { email } = req.params;
+        const response = await authService.forgotPassword(email);
+        res.json(response);
     } catch (error) {
-        console.error(error);
-        res.status(400).json({ status: "Something went wrong!" });
+        res.status(400).json({ message: error.message });
     }
 }
 
@@ -46,44 +21,17 @@ async function forgotPassword(req, res) {
 
 // Hàm đặt lại mật khẩu
 async function resetPassword(req, res) {
+  try {
     const { password, confirmPassword, token } = req.body;
-
-    try {
-        if (!token) {
-            return res.status(400).json({ status: "Missing token!" });
-        }
-
-        // Giải mã token JWT
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-
-        // Kiểm tra mật khẩu nhập lại
-        if (password !== confirmPassword) {
-            return res.status(400).json({ status: "Passwords do not match!" });
-        }
-
-        // Tìm user theo ID từ token
-        const user = await db.User.findById(decoded.id);
-        if (!user) {
-            return res.status(404).json({ status: "User Not Exists!" });
-        }
-
-        // Hash mật khẩu mới
-        const encryptedPassword = await bcrypt.hash(password, 10);
-
-        // Cập nhật mật khẩu mới vào database
-        await db.User.updateOne(
-            { _id: decoded.id },
-            { $set: { password: encryptedPassword } }
-        );
-
-        res.json({ status: "Password changed successfully!" });
-    } catch (error) {
-        console.error(error);
-        if (error.name === "TokenExpiredError") {
-            return res.status(400).json({ status: "Reset link expired!" });
-        }
-        res.status(400).json({ status: "Something went wrong!" });
-    }
+    const response = await authService.resetPassword(
+      password,
+      confirmPassword,
+      token
+    );
+    res.status(200).json(response)
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
 }
 
 
@@ -140,15 +88,18 @@ const verifyAccount = async (req, res) => {
     const { token } = req.body;
     try {
         if (!token) {
-            return res.status(400).json({ message: "Missing token!" });
+            return res.status(400).json({ message: "Thiếu token token!" });
         }
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         const user = await db.User.findById(decoded.id);
         if (!user) {
-            return res.status(404).json({ message: "User not found!" });
+            return res.status(404).json({ message: "Tài khoản không tồn tại!" });
         }
         if (user.status === "active") {
-            return res.status(200).json({ message: "Account already activated!", alreadyActivated: true });
+            return res.status(200).json({ message: "Tài khoản đã kích hoạt rồi!", alreadyActivated: true });
+        }
+        if (user.status === "banned") {
+            return res.status(200).json({ message: "Tài khoản bị ban không thể kích hoạt!" });
         }
         await db.User.updateOne({ _id: decoded.id }, { $set: { status: "active" } });
         const accessToken = jwt.sign({ id: user._id, email: user.email }, process.env.JWT_SECRET, { expiresIn: "1d" });
@@ -242,7 +193,7 @@ const loginByGoogleCallbackUser = async (req, res, next) => {
         avatar: googleUser.picture,
         googleId: googleUser.sub
     }
-    console.log(googleUser);
+    // console.log(user);
 
     // check user co ton tai trong database
     const isUserExist = await db.User.findOne({ email: user.email });
@@ -251,14 +202,13 @@ const loginByGoogleCallbackUser = async (req, res, next) => {
     if (!isUserExist) {
         // user chua ton tai -> tao account moi trong database
         const newUser = new db.User({
-          username: googleUser.name,
           email: googleUser.email,
           password: hashedPassword,
-          fullName: googleUser.given_name,
+          fullName: `${googleUser.given_name} ${googleUser.family_name}`,
           phoneNumber: null,
           address: null,
           roles: ["user"],
-          avatar: googleUser.picture || "https://i.pinimg.com/736x/2e/9b/34/2e9b3443e8afa8d383c132c7b3745d47.jpg",
+          avatar: googleUser.picture ,
           bio: null,
           background: null,
           warningCount: 0,

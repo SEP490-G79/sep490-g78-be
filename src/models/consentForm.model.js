@@ -1,7 +1,12 @@
 const mongoose = require("mongoose");
 
 const consentFormSchema = new mongoose.Schema(
-  {
+  { 
+    title: {
+      type: String,
+      required: true,
+      trim: true,
+    },
     adopter: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -47,7 +52,7 @@ const consentFormSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["draft", "send", "approved", "rejected"],
+      enum: ["draft", "send", "accepted", "approved", "cancelled", "rejected"],
       default: "draft",
     },
     attachments: [

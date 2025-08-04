@@ -148,7 +148,7 @@ async function duplicateTemplate(req, res, next) {
       shelterId
     );
 
-    res.status(200).json(newTemplate   );
+    res.status(200).json(newTemplate);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

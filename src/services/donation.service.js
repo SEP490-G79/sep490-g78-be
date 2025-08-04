@@ -1,4 +1,5 @@
 const db = require("../models");
+const dayjs = require("dayjs");
 
 const saveDonation = async (donationData) => {
   try {
@@ -40,10 +41,36 @@ const getAllDonations = async () => {
   }
 };
 
+const getMonthlyDonationStats = async () => {
+  const currentYear = new Date().getFullYear();
+
+  const months = Array.from({ length: 12 }, (_, index) => `Tháng ${index + 1}`);
+
+  const donations = await db.Donation.find({
+    createdAt: {
+      $gte: new Date(`${currentYear}-01-01T00:00:00.000Z`),
+      $lte: new Date(`${currentYear}-12-31T23:59:59.999Z`)
+    }
+  });
+
+  const chartData = Array.from({ length: 12 }, (_, index) => ({
+    month: months[index],
+    amount: 0,
+  }));
+
+  for (const donation of donations) {
+    const monthIndex = dayjs(donation.createdAt).month(); // 0-11
+    chartData[monthIndex].amount += donation.amount;
+  }
+
+  return chartData;
+};
+
 const donationService = {
   saveDonation,
   getDonationsHistory,
   getAllDonations,
+  getMonthlyDonationStats,
 };
 
 module.exports = donationService;

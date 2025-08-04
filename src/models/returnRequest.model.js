@@ -31,6 +31,9 @@ const returnRequestSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    rejectReason: {
+      type: String,
+    },
     status: {
       type: String,
       enum: ["pending", "approved", "rejected", "cancelled"],

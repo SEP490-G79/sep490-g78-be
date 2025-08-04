@@ -3,14 +3,14 @@ const userRouter = express.Router();
 const bodyParser = require("body-parser");
 const { userController } = require("../controllers");
 const cloudinary = require("../configs/cloudinary");
-const { verifyAccessToken, verifyGoogleCallback, verifyGoogleCallbackAdmin } = require("../middlewares/auth.middleware");
+const { verifyAccessToken } = require("../middlewares/auth.middleware");
 const { isAdmin } = require("../middlewares/admin.middleware");
 
 userRouter.use(bodyParser.json());
 
 userRouter.get("/", userController.getAllUsers);
 userRouter.get("/get-user",verifyAccessToken, userController.getUserByToken);
-userRouter.get("/user-profile/:id", userController.getUserById);
+userRouter.get("/user-profile/:userId", userController.getUserById);
 userRouter.put("/change-password", verifyAccessToken, userController.changePassword);
 userRouter.put("/edit-profile",
   cloudinary.upload.fields([
@@ -20,6 +20,7 @@ userRouter.put("/edit-profile",
   verifyAccessToken,
   userController.editProfile
 );
+userRouter.put( "/wishlist/:petId", verifyAccessToken, userController.wishListPet);
 
 //ADMIN
 userRouter.get("/admin/get-users-list",[verifyAccessToken, isAdmin], userController.getUsersList);

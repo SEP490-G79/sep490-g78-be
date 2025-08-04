@@ -2,6 +2,7 @@ const MedicalRecord = require("../models/medicalRecord.model");
 const Pet = require("../models/pet.model");
 const db = require("../models/");
 const Shelter = require("../models/shelter.model");
+const mongoose = require("mongoose");
 
 const getAllPets = async () => {
   try {
@@ -15,11 +16,12 @@ const getAllPets = async () => {
     throw error;
   }
 };
+
 const getAllPetsByShelter = async (shelterId, page = 1, limit = 8) => {
   const skip = (page - 1) * limit;
 
   const [pets, total] = await Promise.all([
-    Pet.find({ shelter: shelterId })
+    Pet.find({ shelter: shelterId, status: { $ne: "disabled" } })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit)
@@ -35,6 +37,85 @@ const getAllPetsByShelter = async (shelterId, page = 1, limit = 8) => {
     totalPages: Math.ceil(total / limit),
   };
 };
+const getAllPetsByShelterForSubmission = async (shelterId, page = 1, limit = 8, status) => {
+  const skip = (page - 1) * limit;
+
+  const matchFilter = { shelter: new mongoose.Types.ObjectId(shelterId) };
+  if (status) matchFilter.status = status;
+
+  const pets = await Pet.aggregate([
+    { $match: matchFilter },
+    {
+      $lookup: {
+        from: "adoptionforms",
+        localField: "_id",
+        foreignField: "pet",
+        as: "forms"
+      }
+    },
+    { $unwind: { path: "$forms", preserveNullAndEmptyArrays: true } },
+    {
+      $lookup: {
+        from: "adoptionsubmissions",
+        localField: "forms._id",
+        foreignField: "adoptionForm",
+        as: "submissions"
+      }
+    },
+    {
+      $addFields: {
+        latestSubmission: { $max: "$submissions.createdAt" }
+      }
+    },
+    {
+      $group: {
+        _id: "$_id",
+        doc: { $first: "$$ROOT" }
+      }
+    },
+    {
+      $replaceRoot: { newRoot: "$doc" }
+    },
+    {
+      $sort: {
+        latestSubmission: -1,
+        createdAt: -1
+      }
+    },
+    { $skip: skip },
+    { $limit: limit },
+    {
+      $lookup: {
+        from: "breeds",
+        localField: "breeds",
+        foreignField: "_id",
+        as: "breeds"
+      }
+    },
+    {
+      $lookup: {
+        from: "species",
+        localField: "species",
+        foreignField: "_id",
+        as: "species"
+      }
+    },
+    {
+      $unwind: { path: "$species", preserveNullAndEmptyArrays: true }
+    }
+  ]);
+
+  const total = await Pet.countDocuments(matchFilter);
+
+  return {
+    pets,
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+};
+
 
 const viewPetDetails = async (petId) => {
   try {
@@ -83,24 +164,23 @@ const createPet = async (petData) => {
     } catch (err) {
       // Nếu bị trùng petCode (rất hiếm), thử lại 1 lần nữa
       if (err.code === 11000 && err.keyPattern?.petCode) {
-        console.warn("⚠️ petCode bị trùng, thử lại...");
+        console.warn(" petCode bị trùng, thử lại...");
         return await createPet(petData); // retry 1 lần
       }
       throw err;
     }
   } catch (error) {
-    console.error("❌ CREATE PET ERROR:", error);
+    console.error("CREATE PET ERROR:", error);
     throw error;
   }
 };
 
 const updatePet = async (petId, updateData) => {
   try {
-    // Lấy pet cần update
     const pet = await Pet.findById(petId);
     if (!pet) throw new Error("Không tìm thấy thú cưng");
 
-    // Kiểm tra nếu có trường shelter trong updateData thì phải khớp
+    //Kiểm tra shelter có hợp lệ không
     if (
       updateData.shelter &&
       pet.shelter.toString() !== updateData.shelter.toString()
@@ -108,18 +188,73 @@ const updatePet = async (petId, updateData) => {
       throw new Error("Thú cưng không thuộc trạm cứu hộ này!");
     }
 
-    // Cập nhật dữ liệu
-    return await Pet.findByIdAndUpdate(petId, updateData, { new: true });
+    //  Nếu đang muốn đổi sang "available"
+    // Nếu đang muốn đổi sang "available"
+    if (updateData.status === "available" && pet.status !== "available") {
+      const form = await db.AdoptionForm.findOne({ pet: petId, status:"draft" });
+      if (!form) {
+        throw new Error(
+          "Không thể đặt 'sẵn sàng nhận nuôi': Chưa có adoption form."
+        );
+      }
+
+      if (form.status === "draft") {
+        form.status = "active";
+        await form.save();
+      }
+    }
+
+    // Nếu đang muốn đổi sang "unavailable"
+    if (updateData.status === "unavailable" && pet.status !== "unavailable") {
+      const form = await db.AdoptionForm.findOne({ pet: petId, status:"active" });
+      if (!form) {
+        throw new Error(
+          "Không thể đặt 'chưa sẵn sàng nhận nuôi': Chưa có adoption form."
+        );
+      }
+
+      if (form.status === "active") {
+        form.status = "draft";
+        await form.save();
+      }
+    }
+
+    //  Chỉ cho phép update nếu status là 1 trong 2 trạng thái cho phép
+    if (!["available", "unavailable"].includes(updateData.status)) {
+      delete updateData.status; // không cho chỉnh trạng thái khác
+    }
+
+    //  Thực hiện cập nhật
+    const updatedPet = await Pet.findByIdAndUpdate(petId, updateData, {
+      new: true,
+    });
+
+    return updatedPet;
   } catch (error) {
     throw error;
   }
 };
 
-const deletePet = async (petId) => {
+const deletePet = async (req, res) => {
   try {
-    return await Pet.findByIdAndDelete(petId);
+    const { petId, shelterId } = req.params;
+
+    const pet = await db.Pet.findOne({ _id: petId, shelter: shelterId });
+    if (!pet) {
+      return res
+        .status(404)
+        .json({ message: "Không tìm thấy thú cưng để xoá" });
+    }
+
+    // Gọi soft delete từ service
+    const deletedPet = await petService.deletePet(petId);
+
+    res.status(200).json({
+      message: "Đã vô hiệu hoá thú cưng (soft delete)",
+      pet: deletedPet,
+    });
   } catch (error) {
-    throw error;
+    res.status(500).json({ message: "Lỗi máy chủ", error: error.message });
   }
 };
 
@@ -176,6 +311,7 @@ const getPetList = async () => {
           _id: pet.shelter._id,
           name: pet.shelter.name,
           bio: pet.shelter.bio,
+          address: pet.shelter.address,
         },
         adopter: {
           _id: pet.adopter ? pet.adopter._id : null,
@@ -278,4 +414,5 @@ module.exports = {
   getAdoptedPetbyUser,
   getMedicalRecordsByPet,
   getAllPetsByShelter,
+  getAllPetsByShelterForSubmission
 };

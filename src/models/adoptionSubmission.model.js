@@ -26,6 +26,73 @@ const adoptionSubmissionSchema = new mongoose.Schema(
         ],
       },
     ],
+    interview: {
+      interviewId: {
+        type: mongoose.Schema.Types.ObjectId,
+        default: () => new mongoose.Types.ObjectId(),
+      },
+      availableFrom: {
+        type: Date,
+        validate: [
+          {
+            validator: function (v) {
+              return !this.availableTo || v < this.availableTo;
+            },
+            message: "Thời gian bắt đầu phải trước thời gian kết thúc.",
+          },
+        
+        ],
+      },
+      availableTo: {
+        type: Date,
+        validate: [
+          {
+            validator: function (v) {
+              return !this.availableFrom || v > this.availableFrom;
+            },
+            message: "Thời gian kết thúc phải sau thời gian bắt đầu.",
+          },
+          {
+            validator: function (v) {
+              return !this.createdAt || v > this.createdAt;
+            },
+            message: "Thời gian kết thúc phải sau ngày tạo lịch phỏng vấn.",
+          },
+        ],
+      },
+      selectedSchedule: {
+        type: Date,
+      },
+      scheduleAt: {
+        type: Date,
+      },
+      method: {
+        type: String,
+      },
+      feedback: {
+        type: String,
+      },
+      performedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      reviewedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+      note: {
+        type: String,
+      },
+      createAt: {
+        type: Date,
+        default: Date.now,
+      },
+      updateAt: {
+        type: Date,
+        default: Date.now,
+      },
+    },
+
     adoptionsLastMonth: {
       type: Number,
       default: 0,
@@ -36,7 +103,7 @@ const adoptionSubmissionSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["pending", "interviewing", "approved", "rejected", "reviewed"],
+      enum: ["pending", "scheduling", "interviewing", "approved", "rejected", "reviewed"],
       default: "pending",
     },
   },

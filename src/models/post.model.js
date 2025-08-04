@@ -7,6 +7,11 @@ const postSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+    shelter: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shelter",
+      default: null,
+    },
     title: {
       type: String,
       required: true,
@@ -29,6 +34,19 @@ const postSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
+    address: {
+      type: String,
+    },
+    location: {
+      lat: {
+        type: Number,
+        default: 0,
+      },
+      lng: {
+        type: Number,
+        default: 0,
+      },
+    },
     status: {
       type: String,
       enum: ["active", "hidden", "deleted"],

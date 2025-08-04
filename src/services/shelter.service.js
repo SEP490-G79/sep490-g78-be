@@ -11,9 +11,14 @@ const { cloudinary } = require("../configs/cloudinary");
 const fs = require("fs");
 const generateCodename = require("../utils/codeNameGenerator");
 const db = require("../models/index");
+const dayjs = require("dayjs");
 
 const mongoose = require("mongoose");
 const { mailer } = require("../configs");
+const AdoptionForm = require("../models/adoptionForm.model");
+const AdoptionSubmission = require("../models/adoptionSubmission.model");
+const Species = require("../models/species.model");
+const Breed = require("../models/breed.model");
 
 //USER
 async function getAll() {
@@ -36,6 +41,30 @@ async function getAll() {
     throw error;
   }
 }
+
+const getShelterById = async (shelterId) => {
+  try {
+    const shelter = await Shelter.findById(shelterId)
+      .populate("members._id", "fullName avatar email roles status")
+      .lean();
+    if (!shelter) {
+      throw new Error("Shelter not found");
+    }
+    return {
+      ...shelter,
+      members: shelter.members.map((m) => ({
+        _id: String(m._id._id),
+        fullName: m._id.fullName,
+        avatar: m._id.avatar,
+        email: m._id.email,
+        roles: m.roles,
+        status: m._id.status,
+      })),
+    };
+  } catch (error) {
+    throw error;
+  }
+};
 
 const getShelterRequestByUserId = async (userId) => {
   try {
@@ -132,10 +161,10 @@ const sendShelterEstablishmentRequest = async (
       bio: "",
       email: shelterRequestData.email,
       hotline: shelterRequestData.hotline,
-      avatar: "",
+      avatar: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884169/0265e65863c0d910bf1553816c432275_qfl6nk.jpg",
       address: shelterRequestData.address,
       location: shelterRequestData.location,
-      background: "",
+      background: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884183/279dcca3f058ad75a2f3d256799c4634_zt7z3j.jpg",
       members: [
         {
           _id: requesterId,
@@ -444,8 +473,6 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
       };
 
       invitationsToSend.push(newInvitation);
-
-
     }
 
     // Push tất cả invitation vào shelter
@@ -474,7 +501,6 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
   </div>
 `;
     await mailer.sendEmail(emailsList, subject, body);
-
 
     return {
       message: "Đã gửi lời mời",
@@ -855,7 +881,10 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
 };
 
 const getShelterCaringPetsCount = async (shelterId) => {
-  return await Pet.countDocuments({ shelter: shelterId, status: "caring" });
+  return await Pet.countDocuments({
+    shelter: shelterId,
+    status: "unavailable",
+  });
 };
 
 const getShelterAdoptedPetsCount = async (shelterId) => {
@@ -893,9 +922,14 @@ const getShelterPetGrowthByMonth = async (shelterId) => {
   ]);
   return result;
 };
-const changeShelterMemberRole = async (managerId, shelterId, memberId, roles) => {
+const changeShelterMemberRole = async (
+  managerId,
+  shelterId,
+  memberId,
+  roles
+) => {
   try {
-    if(managerId == memberId){
+    if (managerId == memberId) {
       throw new Error("Quản lý không thể tự thay đổi vai trò của chính mình");
     }
 
@@ -903,12 +937,14 @@ const changeShelterMemberRole = async (managerId, shelterId, memberId, roles) =>
     const validRoles = ["staff", "manager"];
     const isValid = roles.every((r) => validRoles.includes(r));
     if (!isValid) {
-      throw new Error("Vai trò không hợp lệ. Chỉ chấp nhận 'staff' hoặc 'manager'");
+      throw new Error(
+        "Vai trò không hợp lệ. Chỉ chấp nhận 'staff' hoặc 'manager'"
+      );
     }
 
     // check so luong role
-    if(roles.length < 1){
-      throw new Error("Mỗi user thành viên phải có ít nhất 1 vai trò")
+    if (roles.length < 1) {
+      throw new Error("Mỗi user thành viên phải có ít nhất 1 vai trò");
     }
 
     // Cập nhật roles cho member trong mảng members
@@ -938,9 +974,6 @@ const changeShelterMemberRole = async (managerId, shelterId, memberId, roles) =>
     throw error;
   }
 };
-
-
-
 
 // ADMIN
 const getAllShelter = async () => {
@@ -1003,142 +1036,69 @@ const getAllShelterEstablishmentRequests = async () => {
     throw error;
   }
 };
-const getOverviewStatistic = async () => {
+const getOverviewStatistic = async (selectedYear) => {
   try {
-    const calculateDifference = (current, before) => {
-      return ["Infinity%", "NaN%"].includes(
-        (((current - before) / before) * 100).toFixed(2) + "%"
-      )
-        ? "0%"
-        : (((current - before) / before) * 100).toFixed(2) + "%";
-    };
-    // Dau thang
-    const startOfThisMonth = new Date(
-      new Date().getFullYear(),
-      new Date().getMonth(),
-      1
-    );
-
-    const totalSheltersLastMonth = await Shelter.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const totalShelters = await Shelter.countDocuments();
-    const shelterChangePercent = calculateDifference(
-      totalShelters,
-      totalSheltersLastMonth
-    );
-
-    const totalUsersLastMonth = await User.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const totalUsers = await User.countDocuments();
-    const userChangePercent = calculateDifference(
-      totalUsers,
-      totalUsersLastMonth
-    );
-
-    const rescuedPetsLastMonth = await Pet.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const rescuedPets = await Pet.countDocuments();
-    const rescuedPetsChangePercent = calculateDifference(
-      rescuedPets,
-      rescuedPetsLastMonth
-    );
-
-    const adoptedPetsLastMonth = await Pet.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-      status: "adopted",
-    });
     const adoptedPets = await Pet.countDocuments({ status: "adopted" });
-    const adoptedPetsChangePercent = calculateDifference(
-      adoptedPets,
-      adoptedPetsLastMonth
-    );
-
-    const totalPostsLastMonth = await Post.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const totalPosts = await Post.countDocuments();
-    const totalPostsChangePercent = calculateDifference(
-      totalPosts,
-      totalPostsLastMonth
-    );
-
-    const totalBlogsLastMonth = await Blog.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const totalBlogs = await Blog.countDocuments();
-    const totalBlogsChangePercent = calculateDifference(
-      totalBlogs,
-      totalBlogsLastMonth
-    );
-
-    const totalReportsLastMonth = await Blog.countDocuments({
-      createdAt: { $lt: startOfThisMonth },
-    });
     const totalReports = await Report.countDocuments();
-    const totalReportsChangePercent = calculateDifference(
-      totalReports,
-      totalReportsLastMonth
-    );
-
-    const totalDonationLastMonth = await Donation.aggregate([
-      {
-        $match: {
-          createdAt: { $lte: startOfThisMonth },
-        },
-      },
-      { $group: { _id: null, total: { $sum: "$amount" } } },
-    ]);
-    const donationAmountLastMonth = totalDonationLastMonth[0]?.total || 0;
     const totalDonation = await Donation.aggregate([
       { $group: { _id: null, total: { $sum: "$amount" } } },
     ]);
     const donationAmount = totalDonation[0]?.total || 0;
-    const donationAmountChangePercent = calculateDifference(
-      totalDonation,
-      donationAmountLastMonth
-    );
+    const totalSpecies = await Species.countDocuments();
+    const totalBreeds = await Breed.countDocuments();
 
+    // chart
+    function matchDateField(field, from, to) {   // xử lý cả string hoặc date
+      return {
+        $expr: {
+          $and: [
+            { $gte: [{ $toDate: `$${field}` }, from] },
+            { $lte: [{ $toDate: `$${field}` }, to] },
+          ],
+        },
+      };
+    }
+    const startDate = new Date(`${selectedYear}-01-01T00:00:00.000Z`);
+    const endDate = new Date(`${selectedYear}-12-31T23:59:59.999Z`);
+
+    const months = Array.from(
+      { length: 12 },
+      (_, index) => `Tháng ${index + 1}`
+    );
+    const chartRawData = await db.Pet.find({
+      status: "adopted",
+      ...matchDateField("updatedAt", startDate, endDate),
+    });
+    const chartData = Array.from({ length: 12 }, (_, index) => ({
+      month: months[index],
+      amount: 0,
+    }));
+    for (const pet of chartRawData) {
+      const monthIndex = dayjs(pet.updatedAt).month(); // 0-11
+      chartData[monthIndex].amount++;
+    }
     return {
       status: 200,
       message: "Lấy dữ liệu thống tổng quan thành công!",
       overviewStatistics: {
-        shelter: {
-          totalShelters,
-          shelterChangePercent,
-        },
-        user: {
-          totalUsers,
-          userChangePercent,
-        },
+        shelter: totalShelters,
+        user: totalUsers,
         pet: {
-          rescuedPets: {
-            current: rescuedPets,
-            changePercent: rescuedPetsChangePercent,
-          },
-          adoptedPets: {
-            current: adoptedPets,
-            changePercent: adoptedPetsChangePercent,
-          },
+          rescuedPets: rescuedPets,
+          adoptedPets: adoptedPets,
         },
-        post: {
-          totalPosts,
-          totalPostsChangePercent,
-        },
-        blog: {
-          totalBlogs,
-          totalBlogsChangePercent,
-        },
-        report: {
-          totalReports,
-          totalReportsChangePercent,
-        },
-        donation: {
-          donationAmount,
-          donationAmountChangePercent,
-        },
+        species: totalSpecies,
+        breed: totalBreeds,
+        post: totalPosts,
+        blog: totalBlogs,
+        report: totalReports,
+        donation: donationAmount,
+        chartData: chartData,
       },
     };
   } catch (error) {
@@ -1187,10 +1147,240 @@ const reviewShelterEstablishmentRequest = async ({
     throw error;
   }
 };
+const getISOWeekAndYear = (date) => {
+  const tmp = new Date(date.getTime());
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+  return { week: weekNo, year: tmp.getUTCFullYear() };
+};
 
+const getStartEndOfISOWeek = (week, year) => {
+  const simple = new Date(year, 0, 1 + (week - 1) * 7);
+  const dow = simple.getDay();
+  const start = new Date(simple);
+  if (dow <= 4) start.setDate(simple.getDate() - simple.getDay() + 1);
+  else start.setDate(simple.getDate() + 8 - simple.getDay());
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return { start, end };
+};
+
+const getAdoptedPetsByWeek = async (shelterId) => {
+  const now = new Date();
+  const twelveWeeksAgo = new Date(now);
+  twelveWeeksAgo.setDate(twelveWeeksAgo.getDate() - 7 * 12);
+
+  const aggregation = await Pet.aggregate([
+    {
+      $match: {
+        shelter: new mongoose.Types.ObjectId(shelterId),
+        status: "adopted",
+        updatedAt: { $gte: twelveWeeksAgo },
+      },
+    },
+    {
+      $project: {
+        week: { $isoWeek: "$updatedAt" },
+        year: { $isoWeekYear: "$updatedAt" },
+      },
+    },
+    {
+      $group: {
+        _id: { week: "$week", year: "$year" },
+        count: { $sum: 1 },
+      },
+    },
+  ]);
+
+  // Lấy 12 tuần gần nhất
+  const currentDate = new Date();
+  const weeks = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(currentDate);
+    d.setDate(d.getDate() - i * 7);
+    const { week, year } = getISOWeekAndYear(d);
+    const { start, end } = getStartEndOfISOWeek(week, year);
+    const label = `${start.toLocaleDateString(
+      "vi-VN"
+    )} - ${end.toLocaleDateString("vi-VN")}`;
+    weeks.push({ week, year, label });
+  }
+
+  const formatted = weeks.map(({ label, week, year }) => {
+    const found = aggregation.find(
+      (item) => item._id.week === week && item._id.year === year
+    );
+
+    return {
+      week: label,
+      count: found?.count ?? 0, // Có thể bỏ random để đúng dữ liệu thực
+    };
+  });
+
+  return formatted;
+};
+
+function getISOWeekNumber(date) {
+  const tmp = new Date(date.getTime());
+  tmp.setUTCDate(tmp.getUTCDate() + 4 - (tmp.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((tmp - yearStart) / 86400000 + 1) / 7);
+  return weekNo;
+}
+
+const getAdoptionFormsByWeek = async (shelterId) => {
+  const now = new Date();
+  const fourWeeksAgo = new Date();
+  fourWeeksAgo.setDate(now.getDate() - 28);
+
+  const forms = await db.AdoptionForm.aggregate([
+    {
+      $match: {
+        shelter: new mongoose.Types.ObjectId(shelterId),
+        createdAt: { $gte: fourWeeksAgo, $lte: now },
+      },
+    },
+    {
+      $addFields: {
+        weekNumber: { $isoWeek: "$createdAt" },
+        year: { $isoWeekYear: "$createdAt" },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          week: "$weekNumber",
+          year: "$year",
+        },
+        count: { $sum: 1 },
+      },
+    },
+    {
+      $sort: {
+        "_id.year": 1,
+        "_id.week": 1,
+      },
+    },
+  ]);
+
+  const result = [];
+  for (let i = 3; i >= 0; i--) {
+    const tmpDate = new Date();
+    tmpDate.setDate(now.getDate() - i * 7);
+    const week = getISOWeekNumber(tmpDate);
+    const year = tmpDate.getUTCFullYear();
+
+    const found = forms.find((f) => f._id.week === week && f._id.year === year);
+
+    const start = dayjs(tmpDate).startOf("isoWeek");
+    const end = dayjs(tmpDate).endOf("isoWeek");
+
+    result.push({
+      week: `${start.format("DD/MM")} - ${end.format("DD/MM")}`,
+      count: found ? found.count : 0,
+    });
+  }
+
+  return result;
+};
+const getSubmissionStatistics = async (shelterId) => {
+  const submissions = await AdoptionSubmission.find()
+    .populate({
+      path: "adoptionForm",
+      select: "shelter",
+    })
+    .lean();
+
+  const filteredSubmissions = submissions.filter(
+    (s) => s.adoptionForm?.shelter?.toString() === shelterId.toString()
+  );
+
+  const result = {
+    approved: 0,
+    rejected: 0,
+    pending: 0,
+    interviewing: 0,
+    reviewed: 0,
+  };
+
+  for (const s of filteredSubmissions) {
+    if (result.hasOwnProperty(s.status)) {
+      result[s.status]++;
+    }
+  }
+
+  return result;
+};
+
+const getAdoptionSubmissionsByWeek = async (shelterId) => {
+  const now = dayjs().endOf("day").toDate();
+  const fourWeeksAgo = dayjs().subtract(4, "week").startOf("day").toDate();
+
+  const submissions = await db.AdoptionSubmission.aggregate([
+    {
+      $lookup: {
+        from: "adoptionforms",
+        localField: "adoptionForm",
+        foreignField: "_id",
+        as: "form",
+      },
+    },
+    { $unwind: "$form" },
+    {
+      $match: {
+        "form.shelter": new mongoose.Types.ObjectId(shelterId),
+        createdAt: { $gte: fourWeeksAgo, $lte: now },
+      },
+    },
+    {
+      $addFields: {
+        weekNumber: { $isoWeek: "$createdAt" },
+        year: { $isoWeekYear: "$createdAt" },
+      },
+    },
+    {
+      $group: {
+        _id: {
+          week: "$weekNumber",
+          year: "$year",
+        },
+        count: { $sum: 1 },
+      },
+    },
+    {
+      $sort: {
+        "_id.year": 1,
+        "_id.week": 1,
+      },
+    },
+  ]);
+
+  // Chuẩn hóa ra đúng 4 tuần gần nhất
+  const result = [];
+  for (let i = 3; i >= 0; i--) {
+    const tmpDate = dayjs().subtract(i, "week");
+    const week = getISOWeekNumber(tmpDate.toDate());
+    const year = tmpDate.year();
+
+    const found = submissions.find(
+      (f) => f._id.week === week && f._id.year === year
+    );
+
+    result.push({
+      week: `${tmpDate.startOf("isoWeek").format("DD/MM")} - ${tmpDate
+        .endOf("isoWeek")
+        .format("DD/MM")}`,
+      count: found ? found.count : 0,
+    });
+  }
+
+  return result;
+};
 const shelterService = {
   // USER
   getAll,
+  getShelterById,
   sendShelterEstablishmentRequest,
   getShelterRequestByUserId,
   getShelterProfile,
@@ -1212,6 +1402,12 @@ const shelterService = {
   getShelterMembersCount,
   getShelterPetGrowthByMonth,
   changeShelterMemberRole,
+
+  //MANAGER
+  getAdoptedPetsByWeek,
+  getSubmissionStatistics,
+  getAdoptionFormsByWeek,
+  getAdoptionSubmissionsByWeek,
 
   // ADMIN
   getAllShelter,

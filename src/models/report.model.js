@@ -4,7 +4,7 @@ const reportSchema = new mongoose.Schema(
   {
     reportType: {
       type: String,
-      enum: ["user", "post"],
+      enum: ["user", "post", "blog"],
       required: true,
     },
 
@@ -15,7 +15,10 @@ const reportSchema = new mongoose.Schema(
     post: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Post",
-
+    },
+    blog: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Blog",
     },
     reportedBy: {
       type: mongoose.Schema.Types.ObjectId,

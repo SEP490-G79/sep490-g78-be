@@ -34,7 +34,7 @@ const adoptionFormSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["draft", "active"],
+      enum: ["draft", "active","archived"],
       default: "draft",
     },
   },

@@ -1,9 +1,11 @@
 const postService = require("../services/post.service");
+const fs = require("fs/promises");
 
 const getPostsList = async (req, res) => {
   try {
-    const userId = req.payload?.id || null; // lấy userId nếu có
-    const posts = await postService.getPostsList(userId);
+    const userId = req.payload?.id || null; 
+    const shelterId = req.params.shelterId || null;
+    const posts = await postService.getPostsList(userId, shelterId);
     return res.status(200).json(posts);
   } catch (error) {
     return res.status(400).json({ message: error.message });
@@ -21,10 +23,12 @@ const getPostDetail = async (req, res) => {
 };
 
 const createPost = async (req, res) => {
-  console.log("Req body:", req.body);
-    console.log("Req files:", req.files);
+  // console.log("Req body:", req.body);
+  //   console.log("Req files:", req.files);
   const userId = req.payload.id;
   const postData = req.body;
+
+
   if (req.files.length > 5) {
     return res.status(400).json({ message: "Chỉ được tải tối đa 5 ảnh." });
   }
@@ -35,13 +39,19 @@ const createPost = async (req, res) => {
       data: post,
     });
   } catch (error) {
+    if (req.files?.length) {
+      await Promise.allSettled(
+        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+      );
+    }
+    console.error("Lỗi khi tạo bài viết:", error.message);
     return res.status(400).json({ message: error.message });
   }
 };
 
 const editPost = async (req, res) => {
-  console.log("Req body:", req.body);
-  console.log("Req files:", req.files);
+  // console.log("Req body:", req.body);
+  // console.log("Req files:", req.files);
   if (req.files.length > 5) {
     return res.status(400).json({ message: "Chỉ được tải tối đa 5 ảnh." });
   }
@@ -60,14 +70,20 @@ const editPost = async (req, res) => {
       data: post,
     });
   } catch (error) {
+    if (req.files?.length) {
+      await Promise.allSettled(
+        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+      );
+    }
     return res.status(400).json({ message: error.message });
   }
 };
 
 const deletePost = async (req, res) => {
   const postId = req.params.postId;
+   const userId = req.payload.id;
   try {
-    const post = await postService.deletePost(postId);
+    const post = await postService.deletePost(postId, userId);
     return res.status(200).json({
       success: true,
       message: "Bài viết đã được xóa thành công",
@@ -108,6 +124,11 @@ const reportPost = async (req, res) => {
       data: report,
     });
   } catch (error) {
+    if (req.files?.length) {
+      await Promise.allSettled(
+        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+      );
+    }
     res.status(400).json({ message: error.message });
   }
 };

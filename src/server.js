@@ -3,12 +3,13 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const httpsErrors = require("http-errors");
 const cors = require("cors");
-require("dotenv").config();
 const cookieParser = require("cookie-parser");
 
+require("dotenv").config({
+  path: `.env.${process.env.NODE_ENV || "development"}`,
+});
+
 const passport = require("./configs/passport.config");
-
-
 
 const {
   userRouter,
@@ -25,8 +26,10 @@ const {
   donationRouter,
   reportRouter,
   blogRouter,
+  notificationRouter,
+  returnRequestRouter,
+  consentFormRouter,
 } = require("./routes");
-
 
 const path = require("path");
 const http = require("http");
@@ -37,14 +40,20 @@ const session = require("express-session");
 // Sử dụng cors middleware để cho phép request từ localhost:3000
 app.use(
   cors({
-    origin: [`${process.env.FE_URL_USER}`, `${process.env.FE_URL_ADMIN}`],
+    origin: [
+      process.env.FE_URL_USER || "http://localhost:5173",
+      process.env.FE_URL_ADMIN || "http://localhost:6456",
+    ],
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
   })
 );
-app.use(express.json());
-app.use(morgan("dev"));
-app.use(bodyParser.json());
+app.use(express.json({ limit: "5mb" }));
+if (process.env.NODE_ENV == "development") {
+  app.use(morgan("dev"));
+}
+
+app.use(bodyParser.json({ limit: "5mb" }));
 app.use(cookieParser());
 // passport oauth
 app.use(
@@ -70,15 +79,17 @@ app.use("/shelters", shelterRouter);
 app.use("/adoption-submissions", adoptionSubmissionRouter);
 app.use("/pets/:petId/medical-records", medicalRecordRouter);
 app.use("/pets/:petId/adoption-submissions", adoptionSubmissionRouter);
-app.use("/shelters/:shelterId/adoptionForms", adoptionFormRouter );
+app.use("/shelters/:shelterId/adoptionForms", adoptionFormRouter);
 app.use("/shelters/:shelterId/adoptionTemplates", adoptionTemplateRouter);
-// app.use("/shelters/:shelterId/consentForms", );
+app.use("/consentForms", consentFormRouter);
 app.use("/species", speciesRouter);
 app.use("/breeds", breedRouter);
 app.use("/posts", postRouter);
 app.use("/donations", donationRouter);
 app.use("/reports", reportRouter);
 app.use("/blogs", blogRouter);
+app.use("/notifications", notificationRouter);
+app.use("/return-requests", returnRequestRouter);
 // app.use("/posts/:postId/comments", );
 // app.use("/notifications", );
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
@@ -87,16 +98,15 @@ app.use(async (req, res, next) => {
   next(httpsErrors(404, "Bad Request"));
 });
 app.use(async (err, req, res, next) => {
-  resStatus = err.status || 500;
+  const resStatus = err.status || 500;
   return res
     .status(resStatus || 500)
     .json({ error: { status: err.status, message: err.message } });
 });
 
-const host = process.env.HOSTNAME;
-const port = process.env.PORT;
+const port = process.env.PORT || 3000;
 
-app.listen(port, host, () => {
-  console.log(`Server is running at http://${host}:${port}`);
+app.listen(port, () => {
+  console.log(`Server is running at port : ${port}`);
   db.connectDB();
 });
