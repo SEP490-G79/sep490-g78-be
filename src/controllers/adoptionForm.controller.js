@@ -53,6 +53,7 @@ const createForm = async (req, res, next) => {
     const existingForm = await db.AdoptionForm.findOne({
       pet: petId,
       shelter: shelterId,
+      status:{$ne:"archived"}
     });
     if (existingForm) {
       return res.status(400).json({
@@ -127,6 +128,8 @@ const createFormByTemplate = async (req, res, next) => {
     res.status(400).json({ message: error.message });
   }
 };
+
+
 
 async function editForm(req, res, next) {
   const { formId } = req.params;

@@ -2,6 +2,7 @@ const db = require("../models");
 const { cloudinary } = require("../configs/cloudinary");
 const fs = require("fs/promises");
 const NotificationService = require("./notification.service");
+const adoptionFormService = require("./adoptionForm.service");
 
 const safeUser = (user) => ({
   _id: user?._id ?? null,
@@ -52,15 +53,10 @@ const createReturnRequest = async (userId, data, files) => {
           resource_type: "image",
         });
         uploadedPhotoUrls.push(result.secure_url);
+        await fs.unlink(file.path);
       } catch (uploadError) {
         console.error("Upload error:", uploadError);
         throw new Error("Lỗi khi upload ảnh lên Cloudinary");
-      } finally {
-        try {
-          await fs.unlink(file.path);
-        } catch (err) {
-          console.warn("Không thể xoá file tạm:", file.path);
-        }
       }
     }
 
@@ -96,15 +92,8 @@ const createReturnRequest = async (userId, data, files) => {
 
     return returnRequest;
   } catch (error) {
-    for (const file of files) {
-      try {
-        await fs.unlink(file.path);
-      } catch (err) {
-        console.warn("Không thể xoá file tạm:", file.path);
-      }
-    }
-    console.error("Lỗi khi tạo yêu cầu trả thú cưng:", error);
-    throw new Error("Lỗi khi tạo yêu cầu trả thú cưng: " + error.message);
+    
+    throw error;
   }
 };
 
@@ -145,15 +134,11 @@ const updateReturnRequest = async (requestId, userId, updateData, files) => {
           resource_type: "image",
         });
         uploadedPhotoUrls.push(result.secure_url);
+        await fs.unlink(file.path);
+
       } catch (uploadError) {
         console.error("Upload error:", uploadError);
         throw new Error("Lỗi khi upload ảnh lên Cloudinary");
-      } finally {
-        try {
-          await fs.unlink(file.path);
-        } catch (err) {
-          console.warn("Không thể xoá file tạm:", file.path);
-        }
       }
     }
 
@@ -191,14 +176,8 @@ const updateReturnRequest = async (requestId, userId, updateData, files) => {
 
     return updatedRequest;
   } catch (error) {
-    for (const file of files) {
-      try {
-        await fs.unlink(file.path);
-      } catch (err) {
-        console.warn("Không thể xoá file tạm:", file.path);
-      }
-    }
-    throw new Error(`Lỗi khi cập nhật yêu cầu trả thú cưng: ${error.message}`);
+    
+    throw error
   }
 };
 
@@ -259,7 +238,7 @@ const getReturnRequestsByUser = async (userId) => {
 
     return result;
   } catch (error) {
-    throw new Error(`Lỗi khi lấy yêu cầu trả thú cưng: ${error.message}`);
+    throw error;
   }
 };
 
@@ -303,7 +282,7 @@ const getReturnRequestsByUserId = async (userId) => {
 
     return result;
   } catch (error) {
-    throw new Error(`Lỗi khi lấy yêu cầu trả thú cưng của người dùng ${userId}: ${error.message}`);
+    throw error
   }
 }
 
@@ -348,7 +327,7 @@ const getReturnRequestsByShelter = async (shelterId) => {
 
     return result;
   } catch (error) {
-    throw new Error(`Lỗi khi lấy yêu cầu trả thú cưng: ${error.message}`);
+    throw error
   }
 };
 
@@ -375,7 +354,7 @@ const deleteReturnRequest = async (requestId, userId) => {
       return updatedRequest;
     }
   } catch (error) {
-    throw new Error(`Lỗi khi xoá yêu cầu trả thú cưng: ${error.message}`);
+    throw error;
   }
 };
 
@@ -390,14 +369,20 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     if (request.status !== "pending") {
       throw new Error("Không thể duyệt yêu cầu không ở trạng thái pending");
     }
+    const oldAdopter = request?.adopter?._id
 
-    await db.ReturnRequest.findByIdAndUpdate(
+
+    const updatedRequest  = await db.ReturnRequest.findByIdAndUpdate(
       requestId,
       { status: "approved", approvedBy: shelterUserId },
       { new: true }
     );
 
-    await db.Pet.findByIdAndUpdate(
+    if(!updatedRequest){
+      throw new Error("Lỗi khi xác nhận yêu cầu!")
+    }
+
+    const updatedPet = await db.Pet.findByIdAndUpdate(
       request.pet._id,
       { 
         status: "unavailable",
@@ -406,21 +391,47 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
       { new: true }
     );
 
-    await db.AdoptionForm.updateMany(
-      { pet: request.pet._id, status: "active" },
-      { status: "draft" }
-    );
+    if(!updatedPet){
+      await db.ReturnRequest.findByIdAndUpdate(
+        requestId,
+        { status: "pending", approvedBy: null },
+      );
+      throw new Error("Lỗi khi đổi trạng thái thú nuôi!")
+    }
 
-    const relatedForms = await db.AdoptionForm.find({ pet: request.pet._id });
-    const relatedFormIds = relatedForms.map((form) => form._id);
+    const updatedForm = await adoptionFormService.duplicateForm(updatedPet?._id, request?.shelter)
 
-    await db.AdoptionSubmission.updateMany(
-      {
-        adoptionForm: { $in: relatedFormIds },
-        status: "approved",
-      },
-      { status: "rejected" }
-    );
+    if(!updatedForm){
+      await db.Pet.findByIdAndUpdate(
+        request.pet._id,
+        { status: "available", adopter: oldAdopter },
+        { new: true }
+      );
+      await db.ReturnRequest.findByIdAndUpdate(requestId, {
+        status: "pending",
+        approvedBy: null,
+      });
+      throw new Error("Lỗi khi khởi tạo lại đơn đăng ký nhận nuôi!");
+    }
+    
+
+    
+
+    // await db.AdoptionForm.updateMany(
+    //   { pet: request.pet._id, status: "active" },
+    //   { status: "draft" }
+    // );
+
+    // const relatedForms = await db.AdoptionForm.find({ pet: request.pet._id });
+    // const relatedFormIds = relatedForms.map((form) => form._id);
+
+    // await db.AdoptionSubmission.updateMany(
+    //   {
+    //     adoptionForm: { $in: relatedFormIds },
+    //     status: "approved",
+    //   },
+    //   { status: "rejected" }
+    // );
 
     await NotificationService.createNotification(
       shelterUserId,
@@ -432,7 +443,7 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
 
     return request;
   } catch (error) {
-    throw new Error(`Lỗi khi duyệt yêu cầu trả thú cưng: ${error.message}`);
+    throw error;
   }
 };
 
@@ -475,7 +486,7 @@ const rejectReturnRequest = async (requestId, shelterUserId, rejectReason) => {
 
     return rejectRequest;
   } catch (error) {
-    throw new Error(`Error rejecting return request: ${error.message}`);
+    throw error;
   }
 };
 
