@@ -338,10 +338,10 @@ const getUserByAccessToken = async (req, res, next) => {
             accessToken: req.cookies.accessToken
         })
     } catch (error) {
-        res.status(error.status).json({
-            message: error.message,
-            status: error.status,
-            token: error.token
+        res.status(Number(error.status) || 400).json({
+          message: error.message,
+          status: Number(error.status) || 400,
+          token: error.token,
         });
     }
 }
