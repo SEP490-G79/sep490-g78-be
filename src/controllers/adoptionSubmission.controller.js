@@ -571,6 +571,33 @@ const addInterviewNote = async (req, res) => {
   }
 };
 
+// update interview performance
+const updateInterviewPerformer = async (req, res) => {
+  try {
+    const { submissionId, newPerformerId } = req.body;
+    const managerId = req.payload.id;
+    if (!submissionId || !newPerformerId) {
+      return res.status(400).json({
+        message: "Thiếu submissionId hoặc newPerformerId",
+      });
+    }
+
+    const updated = await adoptionSubmissionService.updateInterviewPerformer({
+      submissionId,
+      newPerformerId,
+      managerId
+    });
+
+    res.status(200).json({
+      message: "Cập nhật nhân viên phỏng vấn thành công",
+      success: updated.success,
+    });
+  } catch (error) {
+    console.error("Lỗi cập nhật nhân viên phỏng vấn:", error);
+    res.status(error.statusCode ||400).json({ message: error.message });
+  }
+};
+
 
 
 const adoptionSubmissionController = {
@@ -585,7 +612,8 @@ const adoptionSubmissionController = {
   getInterviewCounts,
   selectInterviewSchedule,
   addInterviewFeedback,
-  addInterviewNote
+  addInterviewNote,
+  updateInterviewPerformer
 };
 
 module.exports = adoptionSubmissionController;

@@ -2,6 +2,8 @@ const db = require("../models/");
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const notificationService = require("./notification.service");
+
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -437,6 +439,84 @@ const updateManySubmissionStatus = async (adopterIds, petId) => {
   }
 };
 
+// update interview performance
+const updateInterviewPerformer = async ({
+  submissionId,
+  newPerformerId,
+  managerId
+}) => {
+  const submission = await db.AdoptionSubmission.findById(submissionId)
+    .populate({
+      path: "adoptionForm",
+      populate: {
+        path: "pet",
+        populate: { path: "shelter", select: "_id members name" },
+      },
+    });
+
+  if (!submission) {
+    const error = new Error("Không tìm thấy đơn nhận nuôi");
+    error.statusCode = 404;
+    throw error;
+  }
+  const shelter = submission?.adoptionForm?.pet?.shelter;
+  const pet = submission?.adoptionForm?.pet;
+  const petName = pet?.name || "thú cưng";
+  const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${pet._id}`;
+  const redirectUrl_V2 = `/shelters/${shelter._id}/management/submission-forms`;
+
+  if (!shelter) {
+    const error = new Error("Không tìm thấy thông tin trạm cứu hộ");
+    error.statusCode = 404;
+    throw error;
+  }
+
+
+  if (!submission.interview) {
+    const error = new Error("Đơn này chưa có thông tin phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+    if (submission.interview.feedback) {
+    const error = new Error("Không thể thay đổi nhân viên nếu đã có phản hồi phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+   
+  const oldPerformerId = submission.interview.performedBy?.toString();
+
+  submission.interview.performedBy = newPerformerId;
+  submission.interview.updateAt = new Date();
+  submission.markModified("interview");
+  await submission.save();
+
+  // Gửi notifi cho nhân viên mới
+  if (newPerformerId) {
+    const contentNew = `Bạn đã được chỉ định phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [newPerformerId],
+      contentNew,
+      "adoption",
+      redirectUrl
+    );
+  }
+
+  // Gửi notifi cho nhân viên cũ nếu khác nhân viên mới
+  if (oldPerformerId && oldPerformerId !== newPerformerId.toString()) {
+    const contentOld = `Bạn không còn là người thực hiện phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [oldPerformerId],
+      contentOld,
+      "adoption",
+      redirectUrl_V2
+    );
+  }
+  return { success: true };
+};
+
+
 const adoptionSubmissionService = {
   getAdtoptionRequestList,
   getSubmissionsByUserId,
@@ -451,5 +531,6 @@ const adoptionSubmissionService = {
   addInterviewFeedback,
   addInterviewNote,
   updateManySubmissionStatus,
+  updateInterviewPerformer
 };
 module.exports = adoptionSubmissionService;
