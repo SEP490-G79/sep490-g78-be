@@ -105,6 +105,15 @@ const disablePet = async (req, res) => {
     if (!pet) {
       return res.status(404).json({ message: "Không tìm thấy thú cưng" });
     }
+    const existedForm = await db.AdoptionForm.find({
+      pet: petId,
+      status: { $ne: "draft" },
+    });
+
+    if (existedForm.length > 0) {
+      return res.status(400).json({ message: "Không thể xóa bạn này do đang có hoặc đã từng có đơn nhận nuôi!" });
+
+    }
 
     const updatedPet = await db.Pet.findByIdAndUpdate(
       petId,
