@@ -207,9 +207,17 @@ const updatePet = async (petId, updateData) => {
     // Nếu đang muốn đổi sang "unavailable"
     if (updateData.status === "unavailable" && pet.status !== "unavailable") {
       const form = await db.AdoptionForm.findOne({ pet: petId, status:"active" });
+
       if (!form) {
         throw new Error(
           "Không thể đặt 'chưa sẵn sàng nhận nuôi': Chưa có adoption form."
+        );
+      }
+
+      const exitedSubmissions = await db.AdoptionSubmission.find({adoptionForm:form._id})
+      if(exitedSubmissions && exitedSubmissions.length >0){
+        throw new Error(
+          "Không thể chuyển về trạng thái này vì đã có người đăng ký nhận nuôi!"
         );
       }
 
