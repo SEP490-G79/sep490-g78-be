@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const db = require("../models/index");
 const adoptionFormService = require("../services/adoptionForm.service");
 const questionService = require("../services/question.service");
+const { adoptionSubmissionService } = require("../services");
 
 const getFormsByShelter = async (req, res, next) => {
   try {
@@ -161,6 +162,12 @@ async function changeFormStatus(req, res, next) {
   const formData = req.body;
 
   try {
+    const exitedSubmissions = await db.AdoptionSubmission.find({adoptionForm:formId})
+    if(formData.status == "draft" &&  exitedSubmissions && exitedSubmissions.length >0){
+      return res.status(400).json({
+        message: "Không thể chuyển về trạng thái chỉnh sửa vì đã có người đăng ký!",
+      });
+    }
 
     const updatedForm = await adoptionFormService.changeFormStatus(formId, formData);
     res.status(200).json(updatedForm);
