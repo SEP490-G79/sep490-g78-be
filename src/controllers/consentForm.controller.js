@@ -1,5 +1,6 @@
 const db = require("../models");
 const { consentFormService } = require("../services");
+const fs = require("fs/promises");
 
 async function getByShelter(req, res, next) {
   const { shelterId } = req.params;
@@ -141,6 +142,11 @@ async function createForm(req, res, next) {
 
     res.status(201).json(newConsentForm);
   } catch (error) {
+    if (req.files?.length) {
+      await Promise.allSettled(
+        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+      );
+    }
     res.status(400).json({ message: error.message });
   }
 }
@@ -149,6 +155,23 @@ async function editForm(req, res, next) {
   const { consentFormId } = req.params;
   const { title, commitments, tokenMoney, deliveryMethod, note, address } = req.body;
   const attachments = req.files ||[];
+
+  if (attachments.length > 2) {
+    return res.status(400).json({
+      message: "Không thể tải lên quá 2 tệp đính kèm.",
+    });
+  }
+
+  if (!title || !commitments || commitments.trim() == "" || deliveryMethod == "" || !address) {
+    return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin" });
+  }
+
+  if (deliveryMethod.toLowerCase() != "pickup" && deliveryMethod.toLowerCase() != "delivery") {
+    return res
+      .status(400)
+      .json({ message: "Phương thức giao hàng không hợp lệ" });
+  }
+  
 
   try {
     const updatedConsentForm = await consentFormService.editForm(
@@ -165,6 +188,11 @@ async function editForm(req, res, next) {
     );
     res.status(200).json(updatedConsentForm);
   } catch (error) {
+    if (req.files?.length) {
+      await Promise.allSettled(
+        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+      );
+    }
     res.status(400).json({ message: error.message });
   }
 }
