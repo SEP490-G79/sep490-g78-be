@@ -2,6 +2,8 @@ const db = require("../models/");
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const notificationService = require("./notification.service");
+
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -32,12 +34,23 @@ const getAdtoptionRequestList = async (id) => {
   }
 };
 
+
 const getSubmissionsByUserId = async (userId) => {
   try {
-    const submissions = await db.AdoptionSubmission.find({ createdBy: userId })
-      .populate("adoptionForm")
-      .populate("adoptionForm.pet")
-      .populate("adoptionForm.shelter");
+    const submissions = await db.AdoptionSubmission.find({ performedBy: userId })
+       .populate({
+        path: "adoptionForm",
+        populate: [
+          {
+            path: "pet",
+            select: "_id name photos tokenMoney species breed age gender",
+          },
+          {
+            path: "shelter",
+            select: "_id name address avatar phoneNumber", 
+          },
+        ],
+      });
 
     if (!submissions || submissions.length === 0) {
       throw new Error("Không tìm thấy đơn nhận nuôi nào cho người dùng này.");
@@ -55,10 +68,13 @@ const createAdoptionSubmission = async (data) => {
 
 // check user submission exist
 const checkUserSubmittedForm = async (userId, adoptionFormId) => {
+
   const existingSubmission = await db.AdoptionSubmission.findOne({
     performedBy: userId,
     adoptionForm: adoptionFormId,
   });
+
+
 
   return existingSubmission; // true nếu đã submit, false nếu chưa
 };
@@ -101,7 +117,7 @@ const getSubmissionsByPetIds = async (petIds) => {
     // Tìm tất cả AdoptionForm có status là active và thuộc các petId
     const adoptionForms = await db.AdoptionForm.find({
       pet: { $in: petIds },
-      status: "active",
+      status: { $in: ["active", "adopted", "archived"] },
     }).select("_id");
 
     const formIds = adoptionForms.map((f) => f._id);
@@ -331,6 +347,11 @@ const selectInterviewSchedule = async (
     error.statusCode = 403;
     throw error;
   }
+    if (submission.interview.selectedSchedule) {
+    const error = new Error("Bạn đã chọn lịch phỏng vấn rồi, không thể chọn lại.");
+    error.statusCode = 400;
+    throw error;
+  }
 
   const selected = new Date(selectedSchedule);
 
@@ -424,34 +445,115 @@ const addInterviewNote = async (submissionId, note) => {
 
 const updateManySubmissionStatus = async (adopterIds, petId) => {
   try {
-    if (!petId) {
-      throw new Error("Thiếu id của thú nuôi!");
-    }
-
-    const adoptionForm = await db.AdoptionForm.findOne({
-      pet: petId,
-      status: "active",
-    });
-
-    if (!adoptionForm) {
-      throw new Error("Không tìm thấy đơn nhận nuôi!");
-    }
-
-    const result = await db.AdoptionSubmission.updateMany(
-      {
-        adoptionForm: adoptionForm._id,
-        performedBy: { $in: adopterIds },
-        status: { $ne: "rejected" },
-      },
-      {
-        $set: { status: "rejected" },
+    console.log("ngu"+adopterIds);
+    if(adopterIds && adopterIds.length != 0){
+      if (!petId) {
+        throw new Error("Thiếu id của thú nuôi!");
       }
-    );
-    return result;
+  
+      const adoptionForm = await db.AdoptionForm.findOne({
+        pet: petId,
+        status: "active",
+      });
+  
+      if (!adoptionForm) {
+        throw new Error("Không tìm thấy đơn nhận nuôi!");
+      }
+  
+      const result = await db.AdoptionSubmission.updateMany(
+        {
+          adoptionForm: adoptionForm._id,
+          performedBy: { $in: adopterIds },
+        },
+        {
+          $set: { status: "rejected" },
+        }
+      );
+      return result
+    }
+    return true;
   } catch (error) {
     throw error;
   }
 };
+
+// update interview performance
+const updateInterviewPerformer = async ({
+  submissionId,
+  newPerformerId,
+  managerId
+}) => {
+  const submission = await db.AdoptionSubmission.findById(submissionId)
+    .populate({
+      path: "adoptionForm",
+      populate: {
+        path: "pet",
+        populate: { path: "shelter", select: "_id members name" },
+      },
+    });
+
+  if (!submission) {
+    const error = new Error("Không tìm thấy đơn nhận nuôi");
+    error.statusCode = 404;
+    throw error;
+  }
+  const shelter = submission?.adoptionForm?.pet?.shelter;
+  const pet = submission?.adoptionForm?.pet;
+  const petName = pet?.name || "thú cưng";
+  const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${pet._id}`;
+  const redirectUrl_V2 = `/shelters/${shelter._id}/management/submission-forms`;
+
+  if (!shelter) {
+    const error = new Error("Không tìm thấy thông tin trạm cứu hộ");
+    error.statusCode = 404;
+    throw error;
+  }
+
+
+  if (!submission.interview) {
+    const error = new Error("Đơn này chưa có thông tin phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+    if (submission.interview.feedback) {
+    const error = new Error("Không thể thay đổi nhân viên nếu đã có phản hồi phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+   
+  const oldPerformerId = submission.interview.performedBy?.toString();
+
+  submission.interview.performedBy = newPerformerId;
+  submission.interview.updateAt = new Date();
+  submission.markModified("interview");
+  await submission.save();
+
+  // Gửi notifi cho nhân viên mới
+  if (newPerformerId) {
+    const contentNew = `Bạn đã được chỉ định phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [newPerformerId],
+      contentNew,
+      "adoption",
+      redirectUrl
+    );
+  }
+
+  // Gửi notifi cho nhân viên cũ nếu khác nhân viên mới
+  if (oldPerformerId && oldPerformerId !== newPerformerId.toString()) {
+    const contentOld = `Bạn không còn là người thực hiện phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [oldPerformerId],
+      contentOld,
+      "adoption",
+      redirectUrl_V2
+    );
+  }
+  return { success: true };
+};
+
 
 const adoptionSubmissionService = {
   getAdtoptionRequestList,
@@ -467,5 +569,6 @@ const adoptionSubmissionService = {
   addInterviewFeedback,
   addInterviewNote,
   updateManySubmissionStatus,
+  updateInterviewPerformer
 };
 module.exports = adoptionSubmissionService;

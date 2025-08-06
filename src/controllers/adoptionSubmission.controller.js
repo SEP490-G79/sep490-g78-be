@@ -6,6 +6,8 @@ const AdoptionSubmission = require("../models/adoptionSubmission.model");
 const { mailer } = require("../configs");
 const { default: mongoose } = require("mongoose");
 const { format } = require("date-fns");
+const notificationService = require("../services/notification.service");
+
 
 const getAdtoptionRequestList = async (req, res) => {
   try {
@@ -189,7 +191,26 @@ const createAdoptionSubmission = async (req, res) => {
         .json({ message: "Bạn đã nộp đơn cho thú cưng này rồi." });
     }
 
-    // 8. Tạo đơn
+    // Lấy form và kiểm tra shelter
+    const form = await db.AdoptionForm.findById(adoptionFormId).populate({
+      path: "pet",
+      populate: { path: "shelter" },
+    });
+
+    if (!form || !form.pet || !form.pet.shelter) {
+      return res.status(400).json({ message: "Form hoặc thú cưng không hợp lệ." });
+    }
+    const shelter = form.pet.shelter;
+    const isMember = shelter.members.some(
+      (member) => member._id.toString() === userId
+    );
+
+    if (isMember) {
+      return res.status(403).json({
+        message: "Bạn không thể gửi đơn vì bạn là thành viên của trạm cứu hộ này.",
+      });
+    }
+    // Tạo đơn
     const submission = new db.AdoptionSubmission({
       performedBy: userId,
       adoptionForm: adoptionFormId,
@@ -199,21 +220,46 @@ const createAdoptionSubmission = async (req, res) => {
     });
 
     const saved = await submission.save();
+    res.status(201).json(saved);
 
-    // 9. Gửi email xác nhận
-    const user = await db.User.findById(userId);
-    const form = await db.AdoptionForm.findById(adoptionFormId).populate({
-      path: "pet",
-      populate: { path: "shelter", select: "name" },
-    });
+    // Gửi thông báo cho shelter 
+    const shelterReceivers = shelter.members.filter(
+      (m) => m.roles?.includes("manager") || m.roles?.includes("staff")
+    );
 
-    if (user?.email && form?.pet) {
-      const to = user.email;
-      const petName = form.pet.name || "thú cưng";
-      const shelterName = form.pet.shelter?.name || "Trung tâm cứu hộ";
-      const subject = "Xác nhận đăng ký nhận nuôi";
+    const receiverIds = shelterReceivers.map((m) => m._id);
 
-      const body = `
+    if (receiverIds.length > 0) {
+      const content = `đã gửi yêu cầu nhận nuôi "${form.pet.name}"`;
+      const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${form.pet._id}`;
+
+      await notificationService.createNotification(
+        userId,
+        receiverIds,
+        content,
+        "adoption",
+        redirectUrl
+      );
+    }
+
+
+    setTimeout(async () => {
+      try {
+        // Gửi email xác nhận
+        const user = await db.User.findById(userId);
+        const form = await db.AdoptionForm.findById(adoptionFormId).populate({
+          path: "pet",
+          populate: { path: "shelter", select: "name" },
+        });
+
+        if (user && user.email && form && form.pet) {
+          const to = user.email;
+          const petName = form.pet.name || "thú cưng";
+          const shelterName = form.pet.shelter?.name || "Trung tâm cứu hộ";
+
+          const subject = "Xác nhận đăng ký nhận nuôi";
+
+          const body = `
         <div style="font-family: Arial, sans-serif; line-height: 1.5;">
           <h2>Cảm ơn bạn đã gửi đơn nhận nuôi!</h2>
           <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
@@ -223,10 +269,14 @@ const createAdoptionSubmission = async (req, res) => {
         </div>
       `;
 
-      await mailer.sendEmail(to, subject, body);
-    }
+          await mailer.sendEmail(to, subject, body);
+        }
 
-    return res.status(201).json(saved);
+      } catch (error) {
+        console.log(error)
+      }
+    }, 0);
+
   } catch (err) {
     console.error("Lỗi khi tạo đơn nhận nuôi:", err);
     return res.status(500).json({ message: "Lỗi server", error: err.message });
@@ -261,6 +311,7 @@ const checkUserSubmitted = async (req, res) => {
     }
 
     return res.status(200).json({ submitted: false });
+
   } catch (error) {
     console.error("Lỗi khi kiểm tra submission:", error);
     return res
@@ -318,7 +369,9 @@ const getSubmissionsByPetIds = async (req, res) => {
 // update status of submission
 const updateSubmissionStatus = async (req, res) => {
   try {
+
     const { submissionId, status } = req.body;
+    const reviewedBy = req.payload.id;
     if (!submissionId || !status) {
       return res.status(400).json({
         message: "Thiếu submissionId hoặc trạng thái (status) cần cập nhật",
@@ -334,43 +387,53 @@ const updateSubmissionStatus = async (req, res) => {
     res.status(200).json({ status: updateSubmission.status });
 
     if (status === "rejected") {
-      setTimeout(async () => {
-        try {
-          const submission = await AdoptionSubmission.findById(submissionId)
-            .populate("performedBy", "email fullName")
-            .populate({
-              path: "adoptionForm",
-              populate: {
-                path: "pet",
-                populate: { path: "shelter", select: "name" },
-              },
-            });
+      const submission = await AdoptionSubmission.findById(submissionId)
+        .populate("performedBy", "email fullName")
+        .populate({
+          path: "adoptionForm",
+          populate: {
+            path: "pet",
+            populate: { path: "shelter", select: "name" },
+          },
+        });
+      const user = submission?.performedBy;
+      const pet = submission?.adoptionForm?.pet;
+      const petId = pet?._id;
+      const petName = pet?.name || "thú cưng";
+      const shelterName = pet?.shelter?.name || "Trung tâm cứu hộ";
 
-          const user = submission.performedBy;
-          const petName = submission.adoptionForm?.pet?.name || "thú cưng";
-          const shelterName =
-            submission.adoptionForm?.pet?.shelter?.name || "Trung tâm cứu hộ";
+      // Gửi thông báo
+      if (user?._id) {
+        const content = `Đơn nhận nuôi bé "${petName}" của bạn đã bị từ chối.`;
+        const redirectUrl = `/adoption-form/${petId}/${submissionId}`;
 
-          if (user?.email) {
-            const to = user.email;
-            const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
+        await notificationService.createNotification(
+          reviewedBy,
+          [user._id],
+          content,
+          "adoption",
+          redirectUrl
+        );
+      }
 
-            const body = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-            <h2>Thông báo từ chối đơn nhận nuôi</h2>
-            <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
-            <p>Chúng tôi rất tiếc phải thông báo rằng đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
-            <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục yêu thương và đồng hành cùng các bé thú cưng khác trong tương lai.</p>
-            <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
-          </div>
-        `;
-
-            await mailer.sendEmail(to, subject, body);
-          }
-        } catch (error) {
-          console.log(error);
+      // Gửi email
+      try {
+        if (user?.email) {
+          const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
+          const body = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+          <h2>Thông báo từ chối đơn nhận nuôi</h2>
+          <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
+          <p>Chúng tôi rất tiếc phải thông báo rằng đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
+          <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục yêu thương và đồng hành cùng các bé thú cưng khác trong tương lai.</p>
+          <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
+        </div>
+      `;
+          await mailer.sendEmail(user.email, subject, body);
         }
-      }, 0);
+      } catch (error) {
+        console.error("Lỗi gửi email từ chối nhận nuôi:", error);
+      }
     }
   } catch (error) {
     console.error("Lỗi khi lấy submissions:", error);
@@ -409,59 +472,70 @@ const createInterviewSchedule = async (req, res) => {
       data: updated,
     });
 
-    setTimeout(async () => {
-      try {
-        const submission = await AdoptionSubmission.findById(submissionId)
-          .populate("performedBy", "email fullName")
-          .populate({
-            path: "adoptionForm",
-            populate: {
-              path: "pet",
-              populate: { path: "shelter", select: "name" },
-            },
-          });
+    // Gửi notification cho người dùng
+    try {
+      const submission = await AdoptionSubmission.findById(submissionId)
+        .populate("performedBy", "_id fullName email")
+        .populate({
+          path: "adoptionForm",
+          populate: {
+            path: "pet",
+            populate: { path: "shelter", select: "name" },
+          },
+        });
 
-        const user = submission.performedBy;
-        const petName = submission.adoptionForm?.pet?.name || "thú cưng";
-        const shelterName =
-          submission.adoptionForm?.pet?.shelter?.name || "Trung tâm cứu hộ";
+      const user = submission?.performedBy;
+      const pet = submission?.adoptionForm?.pet;
+      const petId = pet?._id;
+      const petName = pet?.name || "thú cưng";
+      const shelterName = pet?.shelter?.name || "Trung tâm cứu hộ";
 
-        if (user?.email) {
-          const to = user.email;
-          const subject = `Chọn lịch phỏng vấn cho đơn nhận nuôi bé ${petName}`;
-          const from = new Date(availableFrom);
-          const deadline = new Date(from);
-          deadline.setDate(deadline.getDate() - 1);
+      // Notification
+      if (user?._id) {
+        const content = `Đơn nhận nuôi bé "${petName}" của bạn đã được xét duyệt. Vui lòng chọn lịch phỏng vấn.`;
+        const redirectUrl = `/adoption-form/${petId}/${submissionId}`;
 
-          const formatScheduleFrom = format(
-            availableFrom,
-            "HH:mm 'ngày' dd/MM/yyyy"
-          );
-          const formatScheduleTo = format(
-            availableTo,
-            "HH:mm 'ngày' dd/MM/yyyy"
-          );
-          const formatDeadline = format(deadline, "HH:mm 'ngày' dd/MM/yyyy");
+        await notificationService.createNotification(
+          reviewedBy,
+          [user._id],
+          content,
+          "adoption",
+          redirectUrl
+        );
+      }
 
-          const body = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.6;">
-            <h2>Thông báo lịch phỏng vấn</h2>
-            <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
-            <p>Đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã được <strong>${shelterName}</strong> xem xét.</p>
-            <p>Chúng tôi mời bạn tham gia một buổi phỏng vấn nhận nuôi. Vui lòng chọn một thời gian phù hợp trong khoảng sau:</p>
-            <p><strong>Từ:</strong> ${formatScheduleFrom}<br/><strong>Đến:</strong> ${formatScheduleTo}</p>
-            <p>Hình thức phỏng vấn: <strong>${method}</strong></p>
-            <p><strong>Lưu ý:</strong> Bạn cần đăng nhập vào hệ thống PawShelter và chọn lịch phỏng vấn <strong>trước ${formatDeadline}</strong>. Nếu bạn không chọn lịch đúng hạn, đơn của bạn có thể bị hủy.</p>
-            <p style="margin-top: 20px;">Trân trọng,<br/>${shelterName}</p>
-          </div>
+      // Gửi email (không await)
+      if (user?.email) {
+        const to = user.email;
+        const subject = `Chọn lịch phỏng vấn cho đơn nhận nuôi bé ${petName}`;
+        const fromDate = new Date(availableFrom);
+        const deadline = new Date(fromDate);
+        deadline.setDate(deadline.getDate() - 1);
+
+        const formatScheduleFrom = format(availableFrom, "HH:mm 'ngày' dd/MM/yyyy");
+        const formatScheduleTo = format(availableTo, "HH:mm 'ngày' dd/MM/yyyy");
+        const formatDeadline = format(deadline, "HH:mm 'ngày' dd/MM/yyyy");
+
+        const body = `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6;">
+          <h2>Thông báo lịch phỏng vấn</h2>
+          <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
+          <p>Đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã được <strong>${shelterName}</strong> xem xét.</p>
+          <p>Chúng tôi mời bạn tham gia một buổi phỏng vấn nhận nuôi. Vui lòng chọn một thời gian phù hợp trong khoảng sau:</p>
+          <p><strong>Từ:</strong> ${formatScheduleFrom}<br/><strong>Đến:</strong> ${formatScheduleTo}</p>
+          <p>Hình thức phỏng vấn: <strong>${method}</strong></p>
+          <p><strong>Lưu ý:</strong> Bạn cần đăng nhập vào hệ thống PawShelter và chọn lịch phỏng vấn <strong>trước ${formatDeadline}</strong>. Nếu bạn không chọn lịch đúng hạn, đơn của bạn có thể bị hủy.</p>
+          <p style="margin-top: 20px;">Trân trọng,<br/>${shelterName}</p>
+        </div>
         `;
 
-          await mailer.sendEmail(to, subject, body);
-        }
-      } catch (error) {
-        console.log(error);
+        mailer.sendEmail(to, subject, body).catch((err) => {
+          console.error("Lỗi gửi email phỏng vấn:", err);
+        });
       }
-    }, 0);
+    } catch (err) {
+      console.error("Lỗi xử lý notification/email sau khi tạo lịch:", err);
+    }
   } catch (error) {
     console.error("Lỗi tạo lịch phỏng vấn:", error);
 
@@ -478,6 +552,7 @@ const createInterviewSchedule = async (req, res) => {
     res.status(500).json({ message: "Đã xảy ra lỗi khi tạo lịch phỏng vấn." });
   }
 };
+
 
 const getInterviewCounts = async (req, res) => {
   try {
@@ -515,6 +590,49 @@ const selectInterviewSchedule = async (req, res) => {
       userId,
       selectedSchedule
     );
+
+    // Gửi notification đến shelter
+    const submission = await AdoptionSubmission.findById(submissionId)
+      .populate("performedBy", "fullName")
+      .populate({
+        path: "adoptionForm",
+        populate: {
+          path: "pet",
+          populate: {
+            path: "shelter",
+            select: "name members",
+          },
+        },
+      });
+
+    const shelter = submission?.adoptionForm?.pet?.shelter;
+    const pet = submission?.adoptionForm?.pet;
+    const adopterName = submission?.performedBy?.fullName || "Người dùng";
+    const petName = pet?.name || "thú cưng";
+    const redirectUrl = `/shelters/${shelter?._id}/management/submission-forms/${pet?._id}`;
+
+    // Lấy thời gian đã chọn từ selectedSchedule.interview
+    const selectedDate = result?.interview?.selectedSchedule;
+
+    if (shelter?.members?.length && selectedDate) {
+      const receivers = shelter.members.filter(
+        (m) => m.roles?.includes("manager") || m.roles?.includes("staff")
+      );
+
+      const receiverIds = receivers.map((m) => m._id);
+
+      if (receiverIds.length > 0) {
+        const content = `đã chọn lịch phỏng vấn vào ngày ${new Date(selectedDate).toLocaleDateString("vi-VN")} cho đơn nhận nuôi bé "${petName}".`;
+
+        await notificationService.createNotification(
+          userId,
+          receiverIds,
+          content,
+          "adoption",
+          redirectUrl
+        );
+      }
+    }
 
     return res.status(200).json({
       message: "Đã chọn lịch phỏng vấn",
@@ -581,6 +699,35 @@ const addInterviewNote = async (req, res) => {
   }
 };
 
+// update interview performance
+const updateInterviewPerformer = async (req, res) => {
+  try {
+    const { submissionId, newPerformerId } = req.body;
+    const managerId = req.payload.id;
+    if (!submissionId || !newPerformerId) {
+      return res.status(400).json({
+        message: "Thiếu submissionId hoặc newPerformerId",
+      });
+    }
+
+    const updated = await adoptionSubmissionService.updateInterviewPerformer({
+      submissionId,
+      newPerformerId,
+      managerId
+    });
+
+    res.status(200).json({
+      message: "Cập nhật nhân viên phỏng vấn thành công",
+      success: updated.success,
+    });
+  } catch (error) {
+    console.error("Lỗi cập nhật nhân viên phỏng vấn:", error);
+    res.status(error.statusCode ||400).json({ message: error.message });
+  }
+};
+
+
+
 const adoptionSubmissionController = {
   getAdtoptionRequestList,
   getSubmissionsByUser,
@@ -594,6 +741,7 @@ const adoptionSubmissionController = {
   selectInterviewSchedule,
   addInterviewFeedback,
   addInterviewNote,
+  updateInterviewPerformer
 };
 
 module.exports = adoptionSubmissionController;

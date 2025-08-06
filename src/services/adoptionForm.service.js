@@ -1,6 +1,7 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const db = require("../models/index");
+const questionService = require("./question.service");
 
 async function getFormsByShelter(shelterId) {
   try {
@@ -149,10 +150,64 @@ async function deleteForm(formId) {
   }
 }
 
+async function duplicateForm(petId, shelterId) {
+  const selectedShelter = await db.Shelter.findOne({
+    _id: shelterId,
+    status: "active",
+  });
+  if (!selectedShelter) {
+    return new Error("Trung tâm không tồn tại hoặc không hoạt động!");
+  }
+  const oldForm = await db.AdoptionForm.findOne({ pet: petId })
+    .populate("questions")
+    .lean();
+  if (!oldForm) {
+    return new Error("Đơn nhận nuôi không tồn tại!");
+  }
+  try {
+    const dataQuestions = oldForm.questions.map(({ _id, ...question }) => {
+      return {
+        ...question,
+      };
+    });
+    const savedQuestions = await questionService.editListQuestions(
+      dataQuestions
+    );
+    newData = {
+      title: `${oldForm.title}`,
+      pet: oldForm.pet,
+      description: oldForm.description,
+      questions: savedQuestions.map((question) => question._id),
+    };
+    const newForm = await adoptionFormService.createForm(
+      shelterId,
+      petId,
+      newData,
+      oldForm.createdBy
+    );
+
+    return newForm;
+  } catch (error) {
+    throw error;
+  }
+}
+
 // get form by petId
 async function getFormsByPetId(petId) {
   try {
-    const form = await db.AdoptionForm.findOne({ pet: petId, status: "active" })
+    if (!petId) {
+    return new Error("Không có id pet!");
+  }
+
+  const pet = await db.Pet.findOne({_id:petId, status: { $ne: "draft" }});
+  if (!pet) {
+    return new Error("Không tìm thấy thú nuôi!");
+  }
+
+  const adoptStatus = pet.status == "adopted" ? "archived" : "active";
+
+    const form = await db.AdoptionForm.findOne({ pet: petId, status: adoptStatus  })
+      .sort({ createdAt: -1 })
       .populate("pet")
       .populate("createdBy", "fullName email avatar")
       .populate("shelter", "name")
@@ -173,6 +228,7 @@ const adoptionFormService = {
   createForm,
   editForm,
   changeFormStatus,
+  duplicateForm,
   deleteForm,
   getFormsByPetId,
 };

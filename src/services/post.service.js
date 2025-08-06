@@ -88,7 +88,6 @@ const getPostDetail = async (postId) => {
     if (!post || post.status !== "active") {
       throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
-
     return {
       _id: post._id,
       title: post.title,
@@ -304,21 +303,8 @@ const deletePost = async (postId, userId) => {
     await post.save();
 
     return {
-      success: true,
-      message: "Post deleted successfully",
-      data: {
-        _id: post._id,
-        title: post.title,
-        createdBy: {
-          _id: post.createdBy._id,
-          fullName: post.createdBy.fullName,
-          avatar: post.createdBy.avatar,
-        },
-        status: post.status,
-        createdAt: post.createdAt,
-        updatedAt: post.updatedAt,
-      },
-    };
+     post
+      }; 
   } catch (error) {
     throw error;
   }
