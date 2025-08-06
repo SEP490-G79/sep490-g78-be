@@ -45,6 +45,10 @@ async function createForm(shelterId, petId, formData, createdBy) {
       createdBy,
     });
 
+    if (!formData.title) {
+      throw new Error("Tiêu đề là bắt buộc");
+    }
+
     const savedForm = await newForm.save();
     const populatedForm = await db.AdoptionForm.findById(savedForm._id)
       .populate("pet", "_id name petCode")
@@ -107,6 +111,10 @@ async function changeFormStatus(formId, formData) {
       throw new Error(
         "Lỗi khi cập nhập trạng thái form hoặc form không tồn tại!"
       );
+
+    if (!updateForm.status || !["draft", "active"].includes(updateForm.status)) {
+      throw new Error("Trạng thái form không hợp lệ!");
+    }
 
     const petUpdate = await db.Pet.findOneAndUpdate(
       { _id: updateForm.pet._id, status: { $ne: "adopted" } },

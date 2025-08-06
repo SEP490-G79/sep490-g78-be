@@ -1,4 +1,25 @@
 const donationService = require('../services/donation.service');
+const payosService = require("../services/payos.service");
+
+const createPaymentLink = async (req, res) => {
+  try {
+    const url = await payosService.createPaymentLink(req);
+    res.status(200).json({ url });
+  } catch (error) {
+    console.error("Create payment link error:", error.message);
+    res.status(400).json({ message: "Failed to create payment link" });
+  }
+};
+
+const handleWebhook = async (req, res) => {
+  try {
+    await payosService.handleWebhook(req);
+    res.status(200).json({ message: "Webhook received" });
+  } catch (error) {
+    console.error("Webhook error:", error.message);
+    res.sendStatus(400);
+  }
+};
 
 const saveDonation = async (req, res) => {
   try {
@@ -43,6 +64,8 @@ const donationController = {
     saveDonation,
     getDonationsHistory,
     getAllDonations,
+    createPaymentLink,
+    handleWebhook,
 
     //ADMIN
     getMonthlyDonationStats,

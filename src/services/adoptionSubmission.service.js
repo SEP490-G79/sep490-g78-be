@@ -23,8 +23,8 @@ const getAdtoptionRequestList = async (id) => {
         ],
       })
       .populate("answers.questionId");
-    if (!adoptionRequest) {
-      throw new Error("No adoption requests found for this user");
+      if (!adoptionRequest || adoptionRequest.length === 0) {
+      throw new Error("Không tìm thấy yêu cầu nhận nuôi nào cho người dùng này.");
     }
     return adoptionRequest;
   } catch (error) {
@@ -39,6 +39,9 @@ const getSubmissionsByUserId = async (userId) => {
       .populate("adoptionForm.pet")
       .populate("adoptionForm.shelter");
 
+    if (!submissions || submissions.length === 0) {
+      throw new Error("Không tìm thấy đơn nhận nuôi nào cho người dùng này.");
+    }
     return submissions;
   } catch (error) {
     throw error;
@@ -188,20 +191,55 @@ const scheduleInterview = async ({
   reviewedBy,
 }) => {
   try {
-    const submission = await db.AdoptionSubmission.findById(submissionId);
+    const submission = await db.AdoptionSubmission.findById(
+      submissionId
+    ).populate({
+      path: "adoptionForm",
+      populate: {
+        path: "pet",
+        populate: {
+          path: "shelter",
+          select: "_id name members",
+        },
+      },
+    });
+
     if (!submission) {
       throw new Error("Không tìm thấy đơn nhận nuôi.");
     }
+
     if (submission.status !== "scheduling") {
       throw new Error(
         "Chỉ có thể tạo lịch phỏng vấn với những đơn nhận nuôi trong trạng thái chờ phỏng vấn."
       );
     }
-    if (!availableFrom || !availableTo || !method || !performedBy) {
-      throw new Error("Thiếu thông tin bắt buộc để lên lịch phỏng vấn.");
+
+    if (availableFrom && !dayjs(availableFrom).isValid() || availableTo && !dayjs(availableTo).isValid()) {
+      throw new Error("Thời gian không hợp lệ.");
     }
+    if (availableFrom && !dayjs(availableFrom).isAfter(dayjs()) || availableTo && !dayjs(availableTo).isAfter(dayjs())) {
+      throw new Error("Thời gian phải sau thời điểm hiện tại.");
+    }
+
     if (new Date(availableFrom) >= new Date(availableTo)) {
       throw new Error("Thời gian bắt đầu phải trước thời gian kết thúc.");
+    }
+
+    const shelter = submission.adoptionForm?.pet?.shelter;
+    if (!shelter || !shelter.members) {
+      throw new Error(
+        "Không thể xác định trạm cứu hộ hoặc danh sách thành viên."
+      );
+    }
+
+    const isMember = shelter.members.some(
+      (member) => member._id.toString() === performedBy.toString()
+    );
+
+    if (!isMember) {
+      throw new Error(
+        "Người được phân công không thuộc trạm cứu hộ của thú cưng."
+      );
     }
 
     // Cập nhật trường interview
@@ -390,7 +428,6 @@ const updateManySubmissionStatus = async (adopterIds, petId) => {
       throw new Error("Thiếu id của thú nuôi!");
     }
 
-
     const adoptionForm = await db.AdoptionForm.findOne({
       pet: petId,
       status: "active",
@@ -404,7 +441,7 @@ const updateManySubmissionStatus = async (adopterIds, petId) => {
       {
         adoptionForm: adoptionForm._id,
         performedBy: { $in: adopterIds },
-        status: {$ne: "rejected"},
+        status: { $ne: "rejected" },
       },
       {
         $set: { status: "rejected" },
@@ -415,7 +452,6 @@ const updateManySubmissionStatus = async (adopterIds, petId) => {
     throw error;
   }
 };
-
 
 const adoptionSubmissionService = {
   getAdtoptionRequestList,
