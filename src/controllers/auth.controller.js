@@ -200,11 +200,33 @@ const loginByGoogleCallbackUser = async (req, res, next) => {
     // user de gui len frontend
     let accessToken;
     if (!isUserExist) {
+        let fullName;
+        if(googleUser.family_name){
+            if(googleUser.given_name.length >= 6){
+                fullName = googleUser.given_name;
+            }else{
+                fullName = `${googleUser.given_name} ${googleUser.family_name}`
+            }
+            if(fullName.length < 6){
+                fullName = fullName + "Họ tạm thời"
+            }
+        }else{
+            if(googleUser.given_name.length >= 6){
+                fullName = googleUser.given_name;
+            }else{
+                fullName = `${googleUser.given_name} ${googleUser.given_name}`
+            }
+            if(fullName.length < 6){
+                fullName = fullName + "Họ tạm thời"
+            }
+        }
+
+
         // user chua ton tai -> tao account moi trong database
         const newUser = new db.User({
           email: googleUser.email,
           password: hashedPassword,
-          fullName: `${googleUser.given_name} ${googleUser.family_name}`,
+          fullName: fullName,
           phoneNumber: null,
           address: null,
           roles: ["user"],
@@ -245,10 +267,12 @@ const loginByGoogleCallbackUser = async (req, res, next) => {
 
     // gui thong tin len frontend qua http only cookie
     res.cookie("accessToken", accessToken, {
-        maxAge: jwtUtils.accessTokenExp*1000,
-        httpOnly: true,
-        sameSite: "lax"
-    })
+      maxAge: jwtUtils.accessTokenExp * 1000,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", //  HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // cho phép cross-domain
+    });
+
      res.redirect(`${process.env.FE_URL_USER}/login?isLoginByGoogle=true&redirect=${encodeURIComponent(redirectPath)}`);
     } catch (error) {
         console.log(error.message)
@@ -316,10 +340,12 @@ const loginByGoogleCallbackAdmin = async (req, res, next) => {
 
     // gui thong tin len frontend qua http only cookie
     res.cookie("accessToken", accessToken, {
-        maxAge: jwtUtils.accessTokenExp*1000,
-        httpOnly: true,
-        sameSite: "lax"
-    })
+      maxAge: jwtUtils.accessTokenExp * 1000,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production", //  HTTPS
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // cho phép cross-domain
+    });
+
     res.redirect(`${process.env.FE_URL_ADMIN}/login?isLoginByGoogle=true`);
     } catch (error) {
         console.log(error.message)
