@@ -122,7 +122,6 @@ const editProfile = async (userId, profileData, files) => {
         await fs.unlink(avatarFile.path);
       } catch (error) {
         console.error("Cloudinary Upload Error (Avatar):", error);
-        await fs.unlink(avatarFile.path).catch(() => {});
         throw new Error("Lỗi khi tải lên ảnh đại diện. Vui lòng thử lại.");
       }
     }
@@ -142,7 +141,6 @@ const editProfile = async (userId, profileData, files) => {
         await fs.unlink(backgroundFile.path);
       } catch (error) {
         console.error("Cloudinary Upload Error (Background):", error);
-        await fs.unlink(backgroundFile.path).catch(() => {});
         throw new Error("Lỗi khi tải lên ảnh nền. Vui lòng thử lại.");
       }
     }
@@ -261,39 +259,11 @@ const wishListPet = async (userId, petId) => {
       wishList: user.wishList,
     };
   } catch (error) {
-    throw new Error("Lỗi khi cập nhật wishlist: " + error.message);
+    throw error;
   }
 };
 
 //ADMIN
-const addUser = async (data) => {
-  try {
-    const userData = {
-      fullName: data.fullName,
-      email: data.email,
-      password: await bcrypt.hash(data.password, 10),
-      roles: data.roles || ["user"],
-      status: "active",
-      googleId: null,
-    };
-    const newUser = await db.User.create(userData);
-    return {
-      message: "User added successfully",
-      user: {
-        id: newUser._id,
-        fullName: newUser.fullName,
-        email: newUser.email,
-        avatar: newUser.avatar,
-        roles: newUser.roles,
-        status: newUser.status,
-        createdAt: newUser.createdAt,
-        updatedAt: newUser.updatedAt,
-      },
-    };
-  } catch (error) {
-    throw new Error("Error adding user: " + error.message);
-  }
-};
 
 const changeUserRole = async (userId, roles) => {
   try {
@@ -394,7 +364,6 @@ const userService = {
   wishListPet,
 
   //ADMIN
-  addUser,
   changeUserRole,
   banUser,
   unbanUser,

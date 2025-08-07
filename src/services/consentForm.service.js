@@ -33,6 +33,10 @@ const getByUser = async (userId) => {
       )
       .populate("createdBy", "_id fullName avatar phoneNumber address status");
 
+      if(!consentForms || consentForms.length === 0) {
+         throw new Error("Không tìm thấy bản đồng ý nào cho người dùng này.");
+      }
+
     return consentForms;
   } catch (error) {
     // console.error('Error fetching consent forms by user:', error);

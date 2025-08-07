@@ -109,29 +109,29 @@ const reactPost = async (req, res) => {
   }
 };
 
-const reportPost = async (req, res) => {
-  const userId = req.payload.id;
-  const { reason } = req.body;
+// const reportPost = async (req, res) => {
+//   const userId = req.payload.id;
+//   const { reason } = req.body;
 
-  if (!reason || reason.trim() === "") {
-    return res.status(400).json({ message: "Lý do báo cáo không được để trống." });
-  }
+//   if (!reason || reason.trim() === "") {
+//     return res.status(400).json({ message: "Lý do báo cáo không được để trống." });
+//   }
 
-  try {
-    const report = await postService.reportPost(userId, req.params.postId, reason, req.files);
-    res.status(201).json({
-      message: "Báo cáo bài viết thành công",
-      data: report,
-    });
-  } catch (error) {
-    if (req.files?.length) {
-      await Promise.allSettled(
-        req.files.map((file) => fs.unlink(file.path).catch(() => {}))
-      );
-    }
-    res.status(400).json({ message: error.message });
-  }
-};
+//   try {
+//     const report = await postService.reportPost(userId, req.params.postId, reason, req.files);
+//     res.status(201).json({
+//       message: "Báo cáo bài viết thành công",
+//       data: report,
+//     });
+//   } catch (error) {
+//     if (req.files?.length) {
+//       await Promise.allSettled(
+//         req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+//       );
+//     }
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
 const createComment = async (req, res) => {
   try {
@@ -144,7 +144,10 @@ const createComment = async (req, res) => {
       userId,
       message,
     });
-    res.status(201).json(comment);
+    res.status(201).json({
+      message: "Bình luận đã được tạo thành công",
+      data: comment,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -157,7 +160,10 @@ const editComment = async (req, res) => {
     const userId = req.payload.id;
 
     const updated = await postService.editComment(commentId, userId, message);
-    res.status(200).json(updated);
+    res.status(200).json({
+      message: "Bình luận đã được cập nhật thành công",
+      data: updated,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -169,7 +175,10 @@ const removeComment = async (req, res) => {
     const userId = req.payload.id;
 
     const deleted = await postService.removeComment(commentId, userId);
-    res.status(200).json(deleted);
+    res.status(200).json({
+      message: "Bình luận đã được xóa thành công",
+      data: deleted,
+    });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -192,7 +201,7 @@ const postController = {
   editPost,
   deletePost,
   reactPost,
-  reportPost,
+  //reportPost,
   createComment,
   editComment,
   removeComment,
