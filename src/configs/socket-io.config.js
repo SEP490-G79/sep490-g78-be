@@ -23,13 +23,13 @@ class SocketIO {
     } catch (error) {
       console.log(`Connected to socketIO!`);
     }
-    
+  }
+  getInstance() {
+    if (this.instance) return this.instance;
+    console.error("Instance not initialized!");
   }
 }
-getInstance() {
-  if (this.instance) return this.instance;
-  console.error("Instance not initialized!");
-}
+
 
 module.exports = new SocketIO();
 
