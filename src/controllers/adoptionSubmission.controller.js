@@ -386,12 +386,13 @@ const createInterviewSchedule = async (req, res) => {
         const to = user.email;
         const subject = `Chọn lịch phỏng vấn cho đơn nhận nuôi bé ${petName}`;
         const fromDate = new Date(availableFrom);
-        const deadline = new Date(fromDate);
+        const toDate = new Date(availableTo);
+        const deadline = new Date(toDate);
         deadline.setDate(deadline.getDate() - 1);
 
-        const formatScheduleFrom = format(availableFrom, "HH:mm 'ngày' dd/MM/yyyy");
-        const formatScheduleTo = format(availableTo, "HH:mm 'ngày' dd/MM/yyyy");
-        const formatDeadline = format(deadline, "HH:mm 'ngày' dd/MM/yyyy");
+        const formatScheduleFrom = format(availableFrom, "'ngày' dd/MM/yyyy");
+        const formatScheduleTo = format(availableTo, "'ngày' dd/MM/yyyy");
+        const formatDeadline = format(deadline, "'ngày' dd/MM/yyyy");
 
         const body = `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
