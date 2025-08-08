@@ -147,7 +147,7 @@ const sendShelterEstablishmentRequest = async (
       shelterLicense[0].path,
       {
         folder: "shelter_licenses",
-        resource_type: "raw",
+        resource_type: "auto",
       }
     );
     // Xoa file o local
