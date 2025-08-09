@@ -5,7 +5,7 @@ const { userController } = require("../controllers");
 const cloudinary = require("../configs/cloudinary");
 const { verifyAccessToken } = require("../middlewares/auth.middleware");
 const { isAdmin } = require("../middlewares/admin.middleware");
-
+const { checkImageSize } = require("../middlewares/file.middleware");
 userRouter.use(bodyParser.json());
 
 userRouter.get("/", userController.getAllUsers);
@@ -18,6 +18,7 @@ userRouter.put("/edit-profile",
     { name: "background", maxCount: 1 },
   ]),
   verifyAccessToken,
+  checkImageSize,
   userController.editProfile
 );
 userRouter.put( "/wishlist/:petId", verifyAccessToken, userController.wishListPet);

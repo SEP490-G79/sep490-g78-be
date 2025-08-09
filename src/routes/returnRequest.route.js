@@ -3,12 +3,13 @@ const returnRequestRouter = express.Router({ mergeParams: true });
 const returnRequestController = require("../controllers/returnRequest.controller");
 const {verifyAccessToken} = require("../middlewares/auth.middleware");
 const {isShelterStaff} = require("../middlewares/shelter.middleware");
+const { checkImageSize } = require("../middlewares/file.middleware")
 const cloudinary = require("../configs/cloudinary");
 
 
-returnRequestRouter.post("/create", cloudinary.upload.array("photos", 5), verifyAccessToken, returnRequestController.createReturnRequest);
+returnRequestRouter.post("/create", cloudinary.upload.array("photos", 5), verifyAccessToken, checkImageSize, returnRequestController.createReturnRequest);
 
-returnRequestRouter.put("/:requestId/update", cloudinary.upload.array("photos", 5), verifyAccessToken, returnRequestController.updateReturnRequest);
+returnRequestRouter.put("/:requestId/update", cloudinary.upload.array("photos", 5), verifyAccessToken, checkImageSize, returnRequestController.updateReturnRequest);
 
 //returnRequestRouter.get("/get-all", verifyAccessToken, returnRequestController.getReturnRequests);
 

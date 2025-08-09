@@ -38,10 +38,10 @@ const createAdoptionSubmission = async (req, res) => {
     const userId = req.payload.id;
 
     // 1. Validate: thiếu dữ liệu đầu vào
-    if (!adoptionFormId || !Array.isArray(answers) || answers.length === 0) {
+    if (!adoptionFormId) {
       return res
         .status(400)
-        .json({ message: "Thiếu adoptionFormId hoặc answers không hợp lệ." });
+        .json({ message: "Thiếu adoptionFormId." });
     }
 
     // 2. Kiểm tra tồn tại form
@@ -100,11 +100,6 @@ const createAdoptionSubmission = async (req, res) => {
       }
 
       if (type === "SINGLECHOICE") {
-        if (selections.length !== 1) {
-          return res.status(400).json({
-            message: `Câu hỏi '${question.title}' yêu cầu chọn duy nhất một đáp án.`,
-          });
-        }
         if (!options.some((opt) => opt.title === selections[0])) {
           return res.status(400).json({
             message: `Lựa chọn '${selections[0]}' không hợp lệ cho câu hỏi '${question.title}'.`,
@@ -124,7 +119,7 @@ const createAdoptionSubmission = async (req, res) => {
 
       if (type === "YESNO") {
         const validYesNo = ["Có", "Không"];
-        if (selections.length !== 1 || !validYesNo.includes(selections[0])) {
+        if (!validYesNo.includes(selections[0])) {
           return res.status(400).json({
             message: `Câu hỏi '${question.title}' chỉ chấp nhận 'Có' hoặc 'Không'.`,
           });
@@ -133,7 +128,6 @@ const createAdoptionSubmission = async (req, res) => {
 
       if (type === "TEXT") {
         if (
-          selections.length !== 1 ||
           typeof selections[0] !== "string" ||
           !selections[0].trim()
         ) {
