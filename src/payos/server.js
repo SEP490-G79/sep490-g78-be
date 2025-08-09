@@ -37,16 +37,16 @@ app.post("/create-payment-link", async (req, res) => {
     }
 
     //console.log( "Creating payment link with orderCode:", orderCode, "and userId:", userId);
+    const returnUrl = `${process.env.CLIENT_URL}/donation/success`;
+    const cancelUrl = `${process.env.CLIENT_URL}/donation/cancel`;
 
     const paymentLink = await payOS.createPaymentLink({
       orderCode,
       amount,
       description: message || "Ủng hộ trang web",
-      returnUrl: "http://localhost:5173/donation/success",
-      cancelUrl: "http://localhost:5173/donation/cancel",
+      returnUrl,
+      cancelUrl,
     });
-
-    
 
     return res.status(200).json({ url: paymentLink.checkoutUrl });
   } catch (error) {
@@ -65,7 +65,7 @@ app.post("/webhook", async (req, res) => {
 
     const userId = orderUserMap.get(data.orderCode.toString()) || null;
 
-    await axios.post("http://localhost:9999/donations/save-donation", {
+    await axios.post(`${process.env.API_URL}/donations/save-donation`, {
       donor: userId,
       amount: data.amount,
       message: data.description || "",
@@ -78,8 +78,9 @@ app.post("/webhook", async (req, res) => {
   }
 });
 
+const host = process.env.HOSTNAME || "0.0.0.0";
+const port = process.env.PAYOS_PORT || 3030;
 // ==== Kết Nối server ====
-app.listen(3030, () => {
-  console.log("Server is running on port 3030");
+app.listen(port, host, () => {
+  console.log(`Server is running at http://${host}:${port}`);
 });
-

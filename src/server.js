@@ -61,7 +61,10 @@ app.use(
     secret: "pawShelterGoogleLogin",
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: false },
+      cookie: {
+    secure: process.env.NODE_ENV === "production", // true khi production
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // cần thiết nếu frontend và backend khác domain
+  }
   })
 );
 app.use(passport.initialize());

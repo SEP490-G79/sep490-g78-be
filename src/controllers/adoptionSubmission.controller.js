@@ -11,17 +11,20 @@ const notificationService = require("../services/notification.service");
 
 const getAdtoptionRequestList = async (req, res) => {
   try {
-    const adoptionRequests = await adoptionSubmissionService.getAdtoptionRequestList(req.payload.id);
+    const adoptionRequests =
+      await adoptionSubmissionService.getAdtoptionRequestList(req.payload.id);
     res.status(200).json(adoptionRequests);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
-}
+};
 
 const getSubmissionsByUser = async (req, res) => {
   try {
     const userId = req.params.userId;
-    const result = await adoptionSubmissionService.getSubmissionsByUserId(userId);
+    const result = await adoptionSubmissionService.getSubmissionsByUserId(
+      userId
+    );
     res.status(200).json(result);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -34,27 +37,124 @@ const createAdoptionSubmission = async (req, res) => {
     const { adoptionFormId, answers } = req.body;
     const userId = req.payload.id;
 
-    // Tính thời gian 1 tháng trước
+    // 1. Validate: thiếu dữ liệu đầu vào
+    if (!adoptionFormId || !Array.isArray(answers) || answers.length === 0) {
+      return res
+        .status(400)
+        .json({ message: "Thiếu adoptionFormId hoặc answers không hợp lệ." });
+    }
+
+    // 2. Kiểm tra tồn tại form
+    const adoptionForm = await db.AdoptionForm.findById(
+      adoptionFormId
+    ).populate("pet");
+    if (!adoptionForm) {
+      return res.status(404).json({ message: "Form nhận nuôi không tồn tại." });
+    }
+
+    if (adoptionForm.status !== "active") {
+      return res
+        .status(400)
+        .json({ message: "Form nhận nuôi không còn khả dụng." });
+    }
+
+    if (adoptionForm.pet.status !== "available") {
+      return res
+        .status(400)
+        .json({ message: "Thú cưng không còn khả dụng để nhận nuôi." });
+    }
+
+    // 3. Validate câu hỏi trong form
+    const formQuestionIds = adoptionForm.questions.map((q) => q._id.toString());
+    const answerQuestionIds = answers.map((a) => a.questionId?.toString());
+
+    for (const qId of answerQuestionIds) {
+      if (!formQuestionIds.includes(qId)) {
+        return res.status(400).json({
+          message: `Câu hỏi với ID '${qId}' không thuộc form này.`,
+        });
+      }
+    }
+
+    // 4. Lấy thông tin câu hỏi để validate selections
+    const questions = await db.Question.find({
+      _id: { $in: answerQuestionIds },
+    });
+    const questionMap = new Map(questions.map((q) => [q._id.toString(), q]));
+
+    for (const answer of answers) {
+      const question = questionMap.get(answer.questionId?.toString());
+      if (!question) {
+        return res.status(400).json({
+          message: `Không tìm thấy câu hỏi với ID: ${answer.questionId}`,
+        });
+      }
+
+      const { type, options } = question;
+      const selections = answer.selections;
+
+      if (!Array.isArray(selections)) {
+        return res.status(400).json({
+          message: `Answer cho câu hỏi '${question.title}' phải là một mảng.`,
+        });
+      }
+
+      if (type === "SINGLECHOICE") {
+        if (selections.length !== 1) {
+          return res.status(400).json({
+            message: `Câu hỏi '${question.title}' yêu cầu chọn duy nhất một đáp án.`,
+          });
+        }
+        if (!options.some((opt) => opt.title === selections[0])) {
+          return res.status(400).json({
+            message: `Lựa chọn '${selections[0]}' không hợp lệ cho câu hỏi '${question.title}'.`,
+          });
+        }
+      }
+
+      if (type === "MULTIPLECHOICE") {
+        for (const sel of selections) {
+          if (!options.some((opt) => opt.title === sel)) {
+            return res.status(400).json({
+              message: `Lựa chọn '${sel}' không hợp lệ cho câu hỏi '${question.title}'.`,
+            });
+          }
+        }
+      }
+
+      if (type === "YESNO") {
+        const validYesNo = ["Có", "Không"];
+        if (selections.length !== 1 || !validYesNo.includes(selections[0])) {
+          return res.status(400).json({
+            message: `Câu hỏi '${question.title}' chỉ chấp nhận 'Có' hoặc 'Không'.`,
+          });
+        }
+      }
+
+      if (type === "TEXT") {
+        if (
+          selections.length !== 1 ||
+          typeof selections[0] !== "string" ||
+          !selections[0].trim()
+        ) {
+          return res.status(400).json({
+            message: `Câu hỏi '${question.title}' yêu cầu một câu trả lời dạng văn bản.`,
+          });
+        }
+      }
+    }
+
+    // 5. Đếm số pet đã nhận trong 1 tháng
     const oneMonthAgo = new Date();
     oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
 
-    // Đếm số pet đã được user này nhận nuôi trong 1 tháng
     const adoptionsLastMonth = await db.Pet.countDocuments({
       adopter: userId,
       status: "adopted",
       updatedAt: { $gte: oneMonthAgo },
     });
 
-    // Lấy tất cả questionId từ answers
-    const questionIds = answers.map((a) => a.questionId);
-    const questions = await db.Question.find({ _id: { $in: questionIds } });
-
-    const questionMap = new Map();
-    for (const q of questions) {
-      questionMap.set(q._id.toString(), q);
-    }
-
-    // Tính điểm
+    // 6. Tính điểm
     const weightMap = { none: 0, low: 1, medium: 2, high: 3 };
     let totalScore = 0;
     let maxScore = 0;
@@ -63,32 +163,32 @@ const createAdoptionSubmission = async (req, res) => {
       const question = questionMap.get(answer.questionId.toString());
       if (!question) continue;
 
-      const correctOptions = question.options.filter(opt => opt.isTrue);
+      const correctOptions = question.options.filter((opt) => opt.isTrue);
       const totalCorrect = correctOptions.length;
       if (totalCorrect === 0) continue;
 
-      const userCorrect = (answer.selections || []).filter(sel =>
-        correctOptions.some(opt => opt.title === sel)
+      const userCorrect = (answer.selections || []).filter((sel) =>
+        correctOptions.some((opt) => opt.title === sel)
       ).length;
 
       const weight = weightMap[question.priority] || 0;
       maxScore += weight;
-
-      const ratio = userCorrect / totalCorrect;
-      totalScore += ratio * weight;
+      totalScore += (userCorrect / totalCorrect) * weight;
     }
 
-    // Tính phần trăm phù hợp
-    const matchPercentage = maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
+    const matchPercentage =
+      maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
 
-    // Kiểm tra đã nộp đơn chưa
+    // 7. Kiểm tra đã nộp đơn chưa
     const existing = await db.AdoptionSubmission.findOne({
       performedBy: userId,
       adoptionForm: adoptionFormId,
     });
 
     if (existing) {
-      return res.status(400).json({ message: "Bạn đã nộp đơn cho thú cưng này rồi." });
+      return res
+        .status(400)
+        .json({ message: "Bạn đã nộp đơn cho thú cưng này rồi." });
     }
 
     // Lấy form và kiểm tra shelter
@@ -116,7 +216,7 @@ const createAdoptionSubmission = async (req, res) => {
       adoptionForm: adoptionFormId,
       answers,
       adoptionsLastMonth,
-      total: matchPercentage, // Lưu % vào total
+      total: matchPercentage,
     });
 
     const saved = await submission.save();
@@ -179,10 +279,9 @@ const createAdoptionSubmission = async (req, res) => {
 
   } catch (err) {
     console.error("Lỗi khi tạo đơn nhận nuôi:", err);
-    res.status(500).json({ message: "Lỗi server", error: err.message });
+    return res.status(500).json({ message: "Lỗi server", error: err.message });
   }
 };
-
 
 // check user submitted form
 const checkUserSubmitted = async (req, res) => {
@@ -215,7 +314,9 @@ const checkUserSubmitted = async (req, res) => {
 
   } catch (error) {
     console.error("Lỗi khi kiểm tra submission:", error);
-    return res.status(400).json({ message: "Đã tồn tại đơn xin nhận nuôi!" });
+    return res
+      .status(400)
+      .json({ "lỗi khi kiểm tra submission": error.message });
   }
 };
 
@@ -223,7 +324,8 @@ const checkUserSubmitted = async (req, res) => {
 const getAdoptionSubmissionById = async (req, res) => {
   try {
     const id = req.params.submissionId;
-    const submission = await adoptionSubmissionService.getAdoptionSubmissionById(id);
+    const submission =
+      await adoptionSubmissionService.getAdoptionSubmissionById(id);
     res.status(200).json(submission);
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -239,11 +341,28 @@ const getSubmissionsByPetIds = async (req, res) => {
       return res.status(400).json({ message: "Thiếu danh sách petIds" });
     }
 
-    const result = await adoptionSubmissionService.getSubmissionsByPetIds(petIds);
+    const pets = await db.Pet.find({ _id: { $in: petIds } }, { _id: 1 });
+
+    const existingPetIds = pets.map((pet) => pet._id.toString());
+
+    const invalidPetIds = petIds.filter(
+      (id) => !existingPetIds.includes(id.toString())
+    );
+
+    if (invalidPetIds.length > 0) {
+      return res.status(404).json({
+        message: `Các petId sau không tồn tại: ${invalidPetIds.join(", ")}`,
+      });
+    }
+    const result = await adoptionSubmissionService.getSubmissionsByPetIds(
+      petIds
+    );
     res.status(200).json(result);
   } catch (error) {
     console.error("Lỗi khi lấy submissions:", error);
-    res.status(500).json({ message: "Lỗi server", error: error.message });
+    res
+      .status(400)
+      .json({ message: "Lỗi khi lấy submissions", error: error.message });
   }
 };
 
@@ -259,7 +378,11 @@ const updateSubmissionStatus = async (req, res) => {
       });
     }
 
-    const updateSubmission = await adoptionSubmissionService.updateSubmissionStatus(submissionId, status);
+    const updateSubmission =
+      await adoptionSubmissionService.updateSubmissionStatus(
+        submissionId,
+        status
+      );
 
     res.status(200).json({ status: updateSubmission.status });
 
@@ -312,24 +435,24 @@ const updateSubmissionStatus = async (req, res) => {
         console.error("Lỗi gửi email từ chối nhận nuôi:", error);
       }
     }
-
-
   } catch (error) {
     console.error("Lỗi khi lấy submissions:", error);
-    res.status(400).json({ message: "Lỗi server", error: error.message });
+    res
+      .status(400)
+      .json({ message: "Lỗi khi lấy submissions", error: error.message });
   }
-
-}
+};
 // schedule interview
 const createInterviewSchedule = async (req, res) => {
   try {
-    const {
-      submissionId,
-      availableFrom,
-      availableTo,
-      method,
-      performedBy,
-    } = req.body;
+    const { submissionId, availableFrom, availableTo, method, performedBy } =
+      req.body;
+
+    if (!submissionId || !availableFrom || !availableTo || !method || !performedBy) {
+      return res.status(400).json({
+        message: "Thiếu thông tin bắt buộc để lên lịch phỏng vấn.",
+      });
+    }
 
     const reviewedBy = req.payload.id;
     const interviewId = new mongoose.Types.ObjectId();
@@ -386,12 +509,13 @@ const createInterviewSchedule = async (req, res) => {
         const to = user.email;
         const subject = `Chọn lịch phỏng vấn cho đơn nhận nuôi bé ${petName}`;
         const fromDate = new Date(availableFrom);
-        const deadline = new Date(fromDate);
+        const toDate = new Date(availableTo);
+        const deadline = new Date(toDate);
         deadline.setDate(deadline.getDate() - 1);
 
-        const formatScheduleFrom = format(availableFrom, "HH:mm 'ngày' dd/MM/yyyy");
-        const formatScheduleTo = format(availableTo, "HH:mm 'ngày' dd/MM/yyyy");
-        const formatDeadline = format(deadline, "HH:mm 'ngày' dd/MM/yyyy");
+        const formatScheduleFrom = format(availableFrom, "'ngày' dd/MM/yyyy");
+        const formatScheduleTo = format(availableTo, "'ngày' dd/MM/yyyy");
+        const formatDeadline = format(deadline, "'ngày' dd/MM/yyyy");
 
         const body = `
         <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -421,8 +545,9 @@ const createInterviewSchedule = async (req, res) => {
       return res.status(400).json({ message: messages.join(" ") });
     }
 
+    // Thêm dòng này để hiển thị lỗi Error thường (do bạn throw trong service)
     if (error.message) {
-      return res.status(400).json({ message: error.message });
+      return res.status(400).json({ "Lỗi tạo lịch phỏng vấn": error.message });
     }
 
     res.status(500).json({ message: "Đã xảy ra lỗi khi tạo lịch phỏng vấn." });
@@ -512,7 +637,7 @@ const selectInterviewSchedule = async (req, res) => {
 
     return res.status(200).json({
       message: "Đã chọn lịch phỏng vấn",
-      selectedSchedule: result.interview.selectedSchedule
+      selectedSchedule: result.interview.selectedSchedule,
     });
   } catch (error) {
     console.error("Lỗi chọn lịch phỏng vấn:", error);
@@ -527,7 +652,9 @@ const addInterviewFeedback = async (req, res) => {
     const userId = req.payload.id;
 
     if (!submissionId || !feedback) {
-      return res.status(400).json({ message: "Thiếu submissionId hoặc feedback" });
+      return res
+        .status(400)
+        .json({ message: "Thiếu submissionId hoặc feedback" });
     }
 
     const result = await adoptionSubmissionService.addInterviewFeedback(
@@ -553,7 +680,9 @@ const addInterviewNote = async (req, res) => {
     const userId = req.payload.id;
 
     if (!submissionId || !note) {
-      return res.status(400).json({ message: "Thiếu submissionId hoặc feedback" });
+      return res
+        .status(400)
+        .json({ message: "Thiếu submissionId hoặc feedback" });
     }
 
     const result = await adoptionSubmissionService.addInterviewNote(
@@ -571,6 +700,33 @@ const addInterviewNote = async (req, res) => {
   }
 };
 
+// update interview performance
+const updateInterviewPerformer = async (req, res) => {
+  try {
+    const { submissionId, newPerformerId } = req.body;
+    const managerId = req.payload.id;
+    if (!submissionId || !newPerformerId) {
+      return res.status(400).json({
+        message: "Thiếu submissionId hoặc newPerformerId",
+      });
+    }
+
+    const updated = await adoptionSubmissionService.updateInterviewPerformer({
+      submissionId,
+      newPerformerId,
+      managerId
+    });
+
+    res.status(200).json({
+      message: "Cập nhật nhân viên phỏng vấn thành công",
+      success: updated.success,
+    });
+  } catch (error) {
+    console.error("Lỗi cập nhật nhân viên phỏng vấn:", error);
+    res.status(error.statusCode ||400).json({ message: error.message });
+  }
+};
+
 
 
 const adoptionSubmissionController = {
@@ -585,7 +741,8 @@ const adoptionSubmissionController = {
   getInterviewCounts,
   selectInterviewSchedule,
   addInterviewFeedback,
-  addInterviewNote
+  addInterviewNote,
+  updateInterviewPerformer
 };
 
 module.exports = adoptionSubmissionController;
