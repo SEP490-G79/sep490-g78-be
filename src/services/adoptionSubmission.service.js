@@ -3,6 +3,7 @@ const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
 const notificationService = require("./notification.service");
+const { Types } = require("mongoose");
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -25,7 +26,7 @@ const getAdtoptionRequestList = async (id) => {
         ],
       })
       .populate("answers.questionId");
-      if (!adoptionRequest || adoptionRequest.length === 0) {
+    if (!adoptionRequest || adoptionRequest.length === 0) {
       throw new Error("Không tìm thấy yêu cầu nhận nuôi nào cho người dùng này.");
     }
     return adoptionRequest;
@@ -38,7 +39,7 @@ const getAdtoptionRequestList = async (id) => {
 const getSubmissionsByUserId = async (userId) => {
   try {
     const submissions = await db.AdoptionSubmission.find({ performedBy: userId })
-       .populate({
+      .populate({
         path: "adoptionForm",
         populate: [
           {
@@ -47,7 +48,7 @@ const getSubmissionsByUserId = async (userId) => {
           },
           {
             path: "shelter",
-            select: "_id name address avatar phoneNumber", 
+            select: "_id name address avatar phoneNumber",
           },
         ],
       });
@@ -114,27 +115,46 @@ const getAdoptionSubmissionById = async (id) => {
 // get submission by petId
 const getSubmissionsByPetIds = async (petIds) => {
   try {
-    // Tìm tất cả AdoptionForm có status là active và thuộc các petId
-    const adoptionForms = await db.AdoptionForm.find({
-      pet: { $in: petIds },
-      status: { $in: ["active", "adopted", "archived"] },
-    }).select("_id");
+    const ids = petIds.map(id => new Types.ObjectId(id));
 
-    const formIds = adoptionForms.map((f) => f._id);
+    //Lấy status của các pet
+    const pets = await db.Pet.find(
+      { _id: { $in: ids } },
+      { _id: 1, status: 1 }
+    ).lean();
 
+    const adoptedPetIds = pets
+      .filter(p => p.status === "adopted")
+      .map(p => p._id);
+
+    const nonAdoptedPetIds = pets
+      .filter(p => p.status !== "adopted")
+      .map(p => p._id);
+
+    // Lọc AdoptionForm theo điều kiện phụ thuộc pet.status
+
+    const forms = await db.AdoptionForm.find({
+      $or: [
+        // Pet chưa adopted → lấy form active + archived
+        { pet: { $in: nonAdoptedPetIds }, status: { $in: ["active", "archived"] } },
+
+        // Pet đã adopted → lấy form adopted/archived
+        { pet: { $in: adoptedPetIds }, status: { $in: ["adopted", "archived"] } },
+      ],
+    }).select("_id adoptionFormCode pet status");
+
+    const formIds = forms.map(f => f._id);
     if (!formIds.length) return [];
 
+    // Lấy submissions kèm populate
     const submissions = await db.AdoptionSubmission.find({
       adoptionForm: { $in: formIds },
     })
-      .populate(
-        "performedBy",
-        "fullName email address dob phoneNumber warningCount avatar"
-      )
+      .populate("performedBy", "fullName email address dob phoneNumber warningCount avatar")
       .populate({
         path: "adoptionForm",
         populate: [
-          { path: "pet", model: "Pet", select: "name petCode photos" },
+          { path: "pet", model: "Pet", select: "name petCode photos status" },
           { path: "shelter", model: "Shelter", select: "name" },
         ],
       })
@@ -233,9 +253,11 @@ const scheduleInterview = async ({
     if (availableFrom && !dayjs(availableFrom).isValid() || availableTo && !dayjs(availableTo).isValid()) {
       throw new Error("Thời gian không hợp lệ.");
     }
-    if (availableFrom && !dayjs(availableFrom).isAfter(dayjs()) || availableTo && !dayjs(availableTo).isAfter(dayjs())) {
-      throw new Error("Thời gian phải sau thời điểm hiện tại.");
+
+    if (availableTo && !dayjs(availableTo).isAfter(dayjs())) {
+      throw new Error("Thời gian kết thúc phải sau thời điểm hiện tại.");
     }
+
 
     if (new Date(availableFrom) >= new Date(availableTo)) {
       throw new Error("Thời gian bắt đầu phải trước thời gian kết thúc.");
@@ -347,7 +369,7 @@ const selectInterviewSchedule = async (
     error.statusCode = 403;
     throw error;
   }
-    if (submission.interview.selectedSchedule) {
+  if (submission.interview.selectedSchedule) {
     const error = new Error("Bạn đã chọn lịch phỏng vấn rồi, không thể chọn lại.");
     error.statusCode = 400;
     throw error;
@@ -391,11 +413,11 @@ const addInterviewFeedback = async (submissionId, userId, feedback) => {
   }
 
   // Đảm bảo user đã chọn lịch hẹn
-  if (!submission.interview?.selectedSchedule) {
-    const error = new Error("Người dùng chưa chọn lịch phỏng vấn");
-    error.statusCode = 400;
-    throw error;
-  }
+  // if (!submission.interview?.selectedSchedule) {
+  //   const error = new Error("Người dùng chưa chọn lịch phỏng vấn");
+  //   error.statusCode = 400;
+  //   throw error;
+  // }
 
   // Kiểm tra quyền: chỉ interview.performedBy mới được thêm feedback
   if (
@@ -445,21 +467,21 @@ const addInterviewNote = async (submissionId, note) => {
 
 const updateManySubmissionStatus = async (adopterIds, petId) => {
   try {
-    console.log("ngu"+adopterIds);
-    if(adopterIds && adopterIds.length != 0){
+    console.log("ngu" + adopterIds);
+    if (adopterIds && adopterIds.length != 0) {
       if (!petId) {
         throw new Error("Thiếu id của thú nuôi!");
       }
-  
+
       const adoptionForm = await db.AdoptionForm.findOne({
         pet: petId,
         status: "active",
       });
-  
+
       if (!adoptionForm) {
         throw new Error("Không tìm thấy đơn nhận nuôi!");
       }
-  
+
       const result = await db.AdoptionSubmission.updateMany(
         {
           adoptionForm: adoptionForm._id,
@@ -515,12 +537,12 @@ const updateInterviewPerformer = async ({
     error.statusCode = 400;
     throw error;
   }
-    if (submission.interview.feedback) {
+  if (submission.interview.feedback) {
     const error = new Error("Không thể thay đổi nhân viên nếu đã có phản hồi phỏng vấn");
     error.statusCode = 400;
     throw error;
   }
-   
+
   const oldPerformerId = submission.interview.performedBy?.toString();
 
   submission.interview.performedBy = newPerformerId;
