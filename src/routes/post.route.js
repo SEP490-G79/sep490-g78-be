@@ -4,6 +4,7 @@ const bodyParser = require("body-parser");
 const {verifyAccessToken, optionalVerifyAccessToken} = require("../middlewares/auth.middleware");
 const cloudinary = require("../configs/cloudinary");
 const { postController } = require("../controllers");
+const { checkImageSize } = require("../middlewares/file.middleware");
 postRouter.use(bodyParser.json());
 
 postRouter.get("/get-posts-list", optionalVerifyAccessToken, postController.getPostsList);
@@ -17,6 +18,7 @@ postRouter.post("/create",
     }
     next();
   },
+  checkImageSize,
   postController.createPost
 );
 
@@ -29,6 +31,7 @@ postRouter.put("/:postId/edit",
     }
     next();
   },
+  checkImageSize,
   postController.editPost
 );
 postRouter.delete("/:postId/delete", verifyAccessToken, postController.deletePost);
