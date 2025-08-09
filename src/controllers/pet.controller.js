@@ -30,7 +30,10 @@ const getAllPets = async (req, res) => {
 const getAllPetsForSubmission = async (req, res, next) => {
   try {
     const { shelterId } = req.params;
-    const { status } = req.query;
+    let status = req.query.status ?? req.query['status[]'];
+    if (typeof status === 'string') {
+      status = status.split(',').map(s => s.trim()).filter(Boolean);
+    }
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 8;
 
