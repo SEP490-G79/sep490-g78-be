@@ -111,15 +111,6 @@ const getUsersList = async (req, res) => {
     res.status(404).json({ message: error.message });
   }
 };
-const addUser = async (req, res) => {
-  try {
-    const userData = req.body;
-    const newUser = await userService.addUser(userData);
-    res.status(201).json(newUser);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-}
 
 const changeUserRole = async (req, res) => {
   const { userId } = req.params;
@@ -163,7 +154,6 @@ const userController = {
 
   //ADMIN
   getUsersList,
-  addUser,
   changeUserRole,
   banUser,
   unbanUser,

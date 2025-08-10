@@ -2,6 +2,9 @@ const db = require("../models/");
 const dayjs = require("dayjs");
 const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
+const notificationService = require("./notification.service");
+const { Types } = require("mongoose");
+
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -23,8 +26,8 @@ const getAdtoptionRequestList = async (id) => {
         ],
       })
       .populate("answers.questionId");
-    if (!adoptionRequest) {
-      throw new Error("No adoption requests found for this user");
+    if (!adoptionRequest || adoptionRequest.length === 0) {
+      throw new Error("Không tìm thấy yêu cầu nhận nuôi nào cho người dùng này.");
     }
     return adoptionRequest;
   } catch (error) {
@@ -36,7 +39,7 @@ const getAdtoptionRequestList = async (id) => {
 const getSubmissionsByUserId = async (userId) => {
   try {
     const submissions = await db.AdoptionSubmission.find({ performedBy: userId })
-       .populate({
+      .populate({
         path: "adoptionForm",
         populate: [
           {
@@ -45,11 +48,14 @@ const getSubmissionsByUserId = async (userId) => {
           },
           {
             path: "shelter",
-            select: "_id name address avatar phoneNumber", 
+            select: "_id name address avatar phoneNumber",
           },
         ],
       });
 
+    if (!submissions || submissions.length === 0) {
+      throw new Error("Không tìm thấy đơn nhận nuôi nào cho người dùng này.");
+    }
     return submissions;
   } catch (error) {
     throw error;
@@ -109,27 +115,46 @@ const getAdoptionSubmissionById = async (id) => {
 // get submission by petId
 const getSubmissionsByPetIds = async (petIds) => {
   try {
-    // Tìm tất cả AdoptionForm có status là active và thuộc các petId
-    const adoptionForms = await db.AdoptionForm.find({
-      pet: { $in: petIds },
-      status: { $in: ["active", "adopted", "archived"] },
-    }).select("_id");
+    const ids = petIds.map(id => new Types.ObjectId(id));
 
-    const formIds = adoptionForms.map((f) => f._id);
+    //Lấy status của các pet
+    const pets = await db.Pet.find(
+      { _id: { $in: ids } },
+      { _id: 1, status: 1 }
+    ).lean();
 
+    const adoptedPetIds = pets
+      .filter(p => p.status === "adopted")
+      .map(p => p._id);
+
+    const nonAdoptedPetIds = pets
+      .filter(p => p.status !== "adopted")
+      .map(p => p._id);
+
+    // Lọc AdoptionForm theo điều kiện phụ thuộc pet.status
+
+    const forms = await db.AdoptionForm.find({
+      $or: [
+        // Pet chưa adopted → lấy form active + archived
+        { pet: { $in: nonAdoptedPetIds }, status: { $in: ["active", "archived"] } },
+
+        // Pet đã adopted → lấy form adopted/archived
+        { pet: { $in: adoptedPetIds }, status: { $in: ["adopted", "archived"] } },
+      ],
+    }).select("_id adoptionFormCode pet status");
+
+    const formIds = forms.map(f => f._id);
     if (!formIds.length) return [];
 
+    // Lấy submissions kèm populate
     const submissions = await db.AdoptionSubmission.find({
       adoptionForm: { $in: formIds },
     })
-      .populate(
-        "performedBy",
-        "fullName email address dob phoneNumber warningCount avatar"
-      )
+      .populate("performedBy", "fullName email address dob phoneNumber warningCount avatar")
       .populate({
         path: "adoptionForm",
         populate: [
-          { path: "pet", model: "Pet", select: "name petCode photos" },
+          { path: "pet", model: "Pet", select: "name petCode photos status" },
           { path: "shelter", model: "Shelter", select: "name" },
         ],
       })
@@ -202,20 +227,57 @@ const scheduleInterview = async ({
   reviewedBy,
 }) => {
   try {
-    const submission = await db.AdoptionSubmission.findById(submissionId);
+    const submission = await db.AdoptionSubmission.findById(
+      submissionId
+    ).populate({
+      path: "adoptionForm",
+      populate: {
+        path: "pet",
+        populate: {
+          path: "shelter",
+          select: "_id name members",
+        },
+      },
+    });
+
     if (!submission) {
       throw new Error("Không tìm thấy đơn nhận nuôi.");
     }
+
     if (submission.status !== "scheduling") {
       throw new Error(
         "Chỉ có thể tạo lịch phỏng vấn với những đơn nhận nuôi trong trạng thái chờ phỏng vấn."
       );
     }
-    if (!availableFrom || !availableTo || !method || !performedBy) {
-      throw new Error("Thiếu thông tin bắt buộc để lên lịch phỏng vấn.");
+
+    if (availableFrom && !dayjs(availableFrom).isValid() || availableTo && !dayjs(availableTo).isValid()) {
+      throw new Error("Thời gian không hợp lệ.");
     }
+
+    if (availableTo && !dayjs(availableTo).isAfter(dayjs())) {
+      throw new Error("Thời gian kết thúc phải sau thời điểm hiện tại.");
+    }
+
+
     if (new Date(availableFrom) >= new Date(availableTo)) {
       throw new Error("Thời gian bắt đầu phải trước thời gian kết thúc.");
+    }
+
+    const shelter = submission.adoptionForm?.pet?.shelter;
+    if (!shelter || !shelter.members) {
+      throw new Error(
+        "Không thể xác định trạm cứu hộ hoặc danh sách thành viên."
+      );
+    }
+
+    const isMember = shelter.members.some(
+      (member) => member._id.toString() === performedBy.toString()
+    );
+
+    if (!isMember) {
+      throw new Error(
+        "Người được phân công không thuộc trạm cứu hộ của thú cưng."
+      );
     }
 
     // Cập nhật trường interview
@@ -307,7 +369,7 @@ const selectInterviewSchedule = async (
     error.statusCode = 403;
     throw error;
   }
-    if (submission.interview.selectedSchedule) {
+  if (submission.interview.selectedSchedule) {
     const error = new Error("Bạn đã chọn lịch phỏng vấn rồi, không thể chọn lại.");
     error.statusCode = 400;
     throw error;
@@ -351,11 +413,11 @@ const addInterviewFeedback = async (submissionId, userId, feedback) => {
   }
 
   // Đảm bảo user đã chọn lịch hẹn
-  if (!submission.interview?.selectedSchedule) {
-    const error = new Error("Người dùng chưa chọn lịch phỏng vấn");
-    error.statusCode = 400;
-    throw error;
-  }
+  // if (!submission.interview?.selectedSchedule) {
+  //   const error = new Error("Người dùng chưa chọn lịch phỏng vấn");
+  //   error.statusCode = 400;
+  //   throw error;
+  // }
 
   // Kiểm tra quyền: chỉ interview.performedBy mới được thêm feedback
   if (
@@ -405,21 +467,21 @@ const addInterviewNote = async (submissionId, note) => {
 
 const updateManySubmissionStatus = async (adopterIds, petId) => {
   try {
-    console.log("ngu"+adopterIds);
-    if(adopterIds && adopterIds.length != 0){
+    console.log("ngu" + adopterIds);
+    if (adopterIds && adopterIds.length != 0) {
       if (!petId) {
         throw new Error("Thiếu id của thú nuôi!");
       }
-  
+
       const adoptionForm = await db.AdoptionForm.findOne({
         pet: petId,
         status: "active",
       });
-  
+
       if (!adoptionForm) {
         throw new Error("Không tìm thấy đơn nhận nuôi!");
       }
-  
+
       const result = await db.AdoptionSubmission.updateMany(
         {
           adoptionForm: adoptionForm._id,
@@ -437,6 +499,84 @@ const updateManySubmissionStatus = async (adopterIds, petId) => {
   }
 };
 
+// update interview performance
+const updateInterviewPerformer = async ({
+  submissionId,
+  newPerformerId,
+  managerId
+}) => {
+  const submission = await db.AdoptionSubmission.findById(submissionId)
+    .populate({
+      path: "adoptionForm",
+      populate: {
+        path: "pet",
+        populate: { path: "shelter", select: "_id members name" },
+      },
+    });
+
+  if (!submission) {
+    const error = new Error("Không tìm thấy đơn nhận nuôi");
+    error.statusCode = 404;
+    throw error;
+  }
+  const shelter = submission?.adoptionForm?.pet?.shelter;
+  const pet = submission?.adoptionForm?.pet;
+  const petName = pet?.name || "thú cưng";
+  const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${pet._id}`;
+  const redirectUrl_V2 = `/shelters/${shelter._id}/management/submission-forms`;
+
+  if (!shelter) {
+    const error = new Error("Không tìm thấy thông tin trạm cứu hộ");
+    error.statusCode = 404;
+    throw error;
+  }
+
+
+  if (!submission.interview) {
+    const error = new Error("Đơn này chưa có thông tin phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+  if (submission.interview.feedback) {
+    const error = new Error("Không thể thay đổi nhân viên nếu đã có phản hồi phỏng vấn");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const oldPerformerId = submission.interview.performedBy?.toString();
+
+  submission.interview.performedBy = newPerformerId;
+  submission.interview.updateAt = new Date();
+  submission.markModified("interview");
+  await submission.save();
+
+  // Gửi notifi cho nhân viên mới
+  if (newPerformerId) {
+    const contentNew = `Bạn đã được chỉ định phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [newPerformerId],
+      contentNew,
+      "adoption",
+      redirectUrl
+    );
+  }
+
+  // Gửi notifi cho nhân viên cũ nếu khác nhân viên mới
+  if (oldPerformerId && oldPerformerId !== newPerformerId.toString()) {
+    const contentOld = `Bạn không còn là người thực hiện phỏng vấn đơn nhận nuôi bé "${petName}".`;
+    await notificationService.createNotification(
+      managerId,
+      [oldPerformerId],
+      contentOld,
+      "adoption",
+      redirectUrl_V2
+    );
+  }
+  return { success: true };
+};
+
+
 const adoptionSubmissionService = {
   getAdtoptionRequestList,
   getSubmissionsByUserId,
@@ -451,5 +591,6 @@ const adoptionSubmissionService = {
   addInterviewFeedback,
   addInterviewNote,
   updateManySubmissionStatus,
+  updateInterviewPerformer
 };
 module.exports = adoptionSubmissionService;

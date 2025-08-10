@@ -19,7 +19,7 @@ const commentSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["visible", "hidden", "deleted"],
+      enum: ["visible", "deleted"],
       default: "visible",
     },
   },

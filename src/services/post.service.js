@@ -2,7 +2,6 @@ const db = require("../models");
 const { cloudinary } = require("../configs/cloudinary");
 const fs = require("fs/promises");
 const NotificationService = require("./notification.service");
-const { title } = require("process");
 
 const getPostsList = async (userId, shelterId) => {
   try {
@@ -85,7 +84,8 @@ const getPostDetail = async (postId) => {
       .populate("createdBy")
       .populate("likedBy")
       .populate("shelter");
-   if (!post || post.status !== "active") {
+
+    if (!post || post.status !== "active") {
       throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
     return {
@@ -117,7 +117,6 @@ const getPostDetail = async (postId) => {
 
 const createPost = async (userId, postData, files) => {
   const uploadedPhotoUrls = [];
-  const tempFilePaths = [];
   const shelterId = postData.shelter;
 
   try {
@@ -151,7 +150,6 @@ const createPost = async (userId, postData, files) => {
     // Upload ảnh lên Cloudinary
     if (Array.isArray(files)) {
       for (const file of files) {
-        tempFilePaths.push(file.path);
         try {
           const result = await cloudinary.uploader.upload(file.path, {
             folder: "posts",
@@ -161,18 +159,14 @@ const createPost = async (userId, postData, files) => {
           await fs.unlink(file.path);
         } catch (uploadError) {
           console.error("Upload error:", uploadError);
-          await Promise.all(
-            tempFilePaths.map((path) => fs.unlink(path).catch(() => {}))
-          );
-          throw new Error("Lỗi khi upload ảnh lên Cloudinary");
+          throw new Error("Lỗi khi upload ảnh lên");
         }
       }
     }
 
-    if(!postData.title || postData.title.trim() === "") {
+    if (!postData.title || postData.title.trim() === "") {
       throw new Error("Tiêu đề không được để trống");
     }
-
 
     const parsedLocation =
       typeof postData.location === "string"
@@ -202,15 +196,11 @@ const createPost = async (userId, postData, files) => {
 
     return newPost;
   } catch (error) {
-    await Promise.all(
-      tempFilePaths.map((path) => fs.unlink(path).catch(() => {}))
-    );
     throw error;
   }
 };
 
 const editPost = async (userId, postId, postData, files) => {
-  const tempFilePaths = [];
   const uploadedPhotos = [];
 
   try {
@@ -241,7 +231,6 @@ const editPost = async (userId, postId, postData, files) => {
 
     if (Array.isArray(files)) {
       for (const file of files) {
-        tempFilePaths.push(file.path);
         try {
           const result = await cloudinary.uploader.upload(file.path, {
             folder: "posts",
@@ -251,9 +240,6 @@ const editPost = async (userId, postId, postData, files) => {
           await fs.unlink(file.path);
         } catch (uploadErr) {
           console.error("Upload error:", uploadErr);
-          await Promise.all(
-            tempFilePaths.map((path) => fs.unlink(path).catch(() => {}))
-          );
           throw new Error("Không thể upload ảnh mới");
         }
       }
@@ -284,9 +270,6 @@ const editPost = async (userId, postId, postData, files) => {
 
     return updatedPost;
   } catch (error) {
-    await Promise.all(
-      tempFilePaths.map((path) => fs.unlink(path).catch(() => {}))
-    );
     throw error;
   }
 };
@@ -294,7 +277,8 @@ const editPost = async (userId, postId, postData, files) => {
 const deletePost = async (postId, userId) => {
   try {
     const post = await db.Post.findById(postId);
-   if (!post || post.status !== "active") {
+
+    if (!post || post.status !== "active") {
       throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
 
@@ -329,7 +313,8 @@ const deletePost = async (postId, userId) => {
 const reactPost = async (postId, userId) => {
   try {
     const post = await db.Post.findOne({ _id: postId }).populate("shelter");
-if (!post || post.status !== "active") {
+
+    if (!post || post.status !== "active") {
       throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
     }
 
@@ -367,54 +352,67 @@ if (!post || post.status !== "active") {
   }
 };
 
-const reportPost = async (userId, postId, reason, files) => {
-  const tempFilePaths = [];
-  const uploadedPhotos = [];
+// const reportPost = async (userId, postId, reason, files) => {
+//   const uploadedPhotos = [];
 
-  try {
-    if (Array.isArray(files) && files.length > 0) {
-      for (const file of files) {
-        tempFilePaths.push(file.path);
-        const result = await cloudinary.uploader.upload(file.path, {
-          folder: "reports",
-          resource_type: "image",
-        });
-        uploadedPhotos.push(result.secure_url);
-        fs.unlink(file.path, (err) => {
-          if (err) console.error("Lỗi xóa ảnh tạm:", err);
-        });
-      }
-    }
+//   const post = await db.Post.findById(postId).populate("createdBy");
 
-    const newReport = await db.Report.create({
-      reportType: "post",
-      postReported: postId,
-      reportedBy: userId,
-      reason,
-      photos: uploadedPhotos,
-      status: "pending",
-    });
+//   if (!post || post.status !== "active") {
+//     throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
+//   }
+//   if (post.createdBy._id.toString() === userId.toString()) {
+//     throw new Error("Bạn không thể báo cáo bài viết của chính mình.");
+//   }
+//   if (!reason || reason.trim() === "") {
+//     throw new Error("Lý do báo cáo không được để trống.");
+//   }
+//   if (reason.length > 500) {
+//     throw new Error("Lý do báo cáo không được quá 500 ký tự.");
+//   }
 
-    const post = await db.Post.findById(postId).populate("createdBy");
+//   try {
+//     if (Array.isArray(files) && files.length > 0) {
+//       for (const file of files) {
+//         try {
+//           const result = await cloudinary.uploader.upload(file.path, {
+//             folder: "reports",
+//             resource_type: "image",
+//           });
+//           uploadedPhotos.push(result.secure_url);
+//           fs.unlink(file.path, (err) => {
+//             if (err) console.error("Lỗi xóa ảnh tạm:", err);
+//           });
+//         } catch (uploadError) {
+//           console.error("Upload error:", uploadError);
+//           throw new Error("Lỗi khi upload ảnh báo cáo");
+//         }
+//       }
+//     }
 
-    await NotificationService.createNotification(
-      userId,
-      [post.createdBy._id],
-      `Bạn đã báo cáo bài viết: ${post.title}`,
-      "system",
-      `/newfeed?postId=${post._id}`
-    );
+//     const newReport = await db.Report.create({
+//       reportType: "post",
+//       postReported: postId,
+//       reportedBy: userId,
+//       reason,
+//       photos: uploadedPhotos,
+//       status: "pending",
+//     });
 
-    return newReport;
-  } catch (error) {
-    for (const path of tempFilePaths) {
-      fs.unlink(path, (err) => {
-        if (err) console.error("Lỗi xóa ảnh tạm:", err);
-      });
-    }
-    throw error;
-  }
-};
+//     const post = await db.Post.findById(postId).populate("createdBy");
+
+//     await NotificationService.createNotification(
+//       userId,
+//       [post.createdBy._id],
+//       `Bạn đã báo cáo bài viết: ${post.title}`,
+//       "system",
+//       `/newfeed?postId=${post._id}`
+//     );
+
+//     return newReport;
+//   } catch (error) {
+//     throw error;
+//   }
+// };
 
 const createComment = async ({ postId, userId, message }) => {
   try {
@@ -425,6 +423,12 @@ const createComment = async ({ postId, userId, message }) => {
     });
 
     const post = await db.Post.findById(postId).populate("shelter");
+    if (!post || post.status !== "active") {
+      throw new Error("Bài viết không tồn tại hoặc đã bị xóa.");
+    }
+    if (!message || message.trim() === "") {
+      throw new Error("Nội dung bình luận không được để trống.");
+    }
 
     let receivers = [post.createdBy];
     if (post.shelter) {
@@ -456,29 +460,37 @@ const editComment = async (commentId, userId, message) => {
       { new: true }
     );
 
-    if (!comment) {
-      throw new Error("Comment not found or permission denied");
+    if (!comment || comment.status !== "visible") {
+      throw new Error("Bình luận không tồn tại hoặc đã bị xóa.");
+    }
+    if (!message || message.trim() === "") {
+      throw new Error("Nội dung bình luận không được để trống.");
     }
 
     return comment;
   } catch (error) {
-    throw new Error("Error editing comment: " + error.message);
+    throw error;
   }
 };
 
 const removeComment = async (commentId, userId) => {
   try {
-    const comment = await db.Comment.findOneAndUpdate(
+    const comment = await db.Comment.findOne({
+      _id: commentId,
+      commenter: userId,
+    });
+
+    if (!comment || comment.status !== "visible") {
+      throw new Error("Bình luận không tồn tại hoặc đã bị xóa.");
+    }
+
+    const deletedComment = await db.Comment.findOneAndUpdate(
       { _id: commentId, commenter: userId },
       { status: "deleted" },
       { new: true }
     );
 
-    if (!comment) {
-      throw new Error("Comment not found or permission denied");
-    }
-
-    return comment;
+    return deletedComment;
   } catch (error) {
     throw error;
   }
@@ -516,7 +528,7 @@ const postService = {
   editPost,
   deletePost,
   reactPost,
-  reportPost,
+  // reportPost,
   createComment,
   editComment,
   removeComment,

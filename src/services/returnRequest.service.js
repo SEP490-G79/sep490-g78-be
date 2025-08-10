@@ -46,6 +46,18 @@ const createReturnRequest = async (userId, data, files) => {
       throw new Error("Bạn không phải người đã nhận nuôi thú cưng này");
     }
 
+    const existingRequest = await db.ReturnRequest.findOne({
+      pet,
+      requestedBy: userId,
+      status: { $in: ["pending", "approved"] },
+    });
+
+    if (existingRequest) {
+      throw new Error(
+        "Bạn đã gửi yêu cầu trả thú cưng này và đang chờ duyệt hoặc đã được duyệt!"
+      );
+    }
+
     for (const file of files) {
       try {
         const result = await cloudinary.uploader.upload(file.path, {
@@ -92,7 +104,6 @@ const createReturnRequest = async (userId, data, files) => {
 
     return returnRequest;
   } catch (error) {
-    
     throw error;
   }
 };
@@ -135,7 +146,6 @@ const updateReturnRequest = async (requestId, userId, updateData, files) => {
         });
         uploadedPhotoUrls.push(result.secure_url);
         await fs.unlink(file.path);
-
       } catch (uploadError) {
         console.error("Upload error:", uploadError);
         throw new Error("Lỗi khi upload ảnh lên Cloudinary");
@@ -176,8 +186,7 @@ const updateReturnRequest = async (requestId, userId, updateData, files) => {
 
     return updatedRequest;
   } catch (error) {
-    
-    throw error
+    throw error;
   }
 };
 
@@ -202,7 +211,10 @@ const getReturnRequestsByUser = async (userId) => {
   try {
     if (!userId) throw new Error("Thiếu id người dùng");
 
-    const returnRequests = await db.ReturnRequest.find({ requestedBy: userId, status: { $ne: "cancelled" }})
+    const returnRequests = await db.ReturnRequest.find({
+      requestedBy: userId,
+      status: { $ne: "cancelled" },
+    })
       .populate("pet requestedBy shelter approvedBy")
       .sort({ createdAt: -1 });
 
@@ -233,6 +245,7 @@ const getReturnRequestsByUser = async (userId) => {
         createdAt: request.createdAt,
         updatedAt: request.updatedAt,
         approvedBy: safeUser(request.approvedBy),
+        rejectReason: request.rejectReason || null,
       };
     });
 
@@ -277,14 +290,15 @@ const getReturnRequestsByUserId = async (userId) => {
         createdAt: request.createdAt,
         updatedAt: request.updatedAt,
         approvedBy: safeUser(request.approvedBy),
+        rejectReason: request.rejectReason || null,
       };
     });
 
     return result;
   } catch (error) {
-    throw error
+    throw error;
   }
-}
+};
 
 const getReturnRequestsByShelter = async (shelterId) => {
   try {
@@ -327,7 +341,7 @@ const getReturnRequestsByShelter = async (shelterId) => {
 
     return result;
   } catch (error) {
-    throw error
+    throw error;
   }
 };
 
@@ -369,39 +383,38 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     if (request.status !== "pending") {
       throw new Error("Không thể duyệt yêu cầu không ở trạng thái pending");
     }
-    const oldAdopter = request?.adopter?._id
+    const oldAdopter = request.pet?.adopter || null;
 
-
-    const updatedRequest  = await db.ReturnRequest.findByIdAndUpdate(
+    const updatedRequest = await db.ReturnRequest.findByIdAndUpdate(
       requestId,
       { status: "approved", approvedBy: shelterUserId },
       { new: true }
     );
 
-    if(!updatedRequest){
-      throw new Error("Lỗi khi xác nhận yêu cầu!")
+    if (!updatedRequest) {
+      throw new Error("Lỗi khi xác nhận yêu cầu!");
     }
 
     const updatedPet = await db.Pet.findByIdAndUpdate(
-      request.pet._id,
-      { 
-        status: "unavailable",
-        adopter: null,
-       },
-      { new: true }
+      petId,
+      { $set: { status: "unavailable", adopter: null } },
+      { new: true, session }
     );
 
-    if(!updatedPet){
-      await db.ReturnRequest.findByIdAndUpdate(
-        requestId,
-        { status: "pending", approvedBy: null },
-      );
-      throw new Error("Lỗi khi đổi trạng thái thú nuôi!")
+    if (!updatedPet) {
+      await db.ReturnRequest.findByIdAndUpdate(requestId, {
+        status: "pending",
+        approvedBy: null,
+      });
+      throw new Error("Lỗi khi đổi trạng thái thú nuôi!");
     }
 
-    const updatedForm = await adoptionFormService.duplicateForm(updatedPet?._id, request?.shelter)
+    const updatedForm = await adoptionFormService.duplicateForm(
+      updatedPet?._id,
+      request?.shelter
+    );
 
-    if(!updatedForm){
+    if (!updatedForm) {
       await db.Pet.findByIdAndUpdate(
         request.pet._id,
         { status: "available", adopter: oldAdopter },
@@ -413,9 +426,6 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
       });
       throw new Error("Lỗi khi khởi tạo lại đơn đăng ký nhận nuôi!");
     }
-    
-
-    
 
     // await db.AdoptionForm.updateMany(
     //   { pet: request.pet._id, status: "active" },
@@ -432,11 +442,11 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     //   },
     //   { status: "rejected" }
     // );
-
+    const shelter = await db.Shelter.findById(request.shelter).select("name");
     await NotificationService.createNotification(
       shelterUserId,
       [request.requestedBy],
-      "Yêu cầu trả thú cưng đã được duyệt",
+      ` - ${shelter?.name || "Trạm cứu hộ"} Yêu cầu trả thú cưng đã được duyệt`,
       "other",
       `/profile/${request.requestedBy}?tab=return-request`
     );
@@ -476,10 +486,12 @@ const rejectReturnRequest = async (requestId, shelterUserId, rejectReason) => {
       { new: true }
     );
 
+    const shelter = await db.Shelter.findById(request.shelter).select("name");
+
     await NotificationService.createNotification(
       shelterUserId,
       [request.requestedBy],
-      "Yêu cầu trả thú cưng đã bị từ chối",
+      ` - ${shelter?.name || "Trạm cứu hộ"} Yêu cầu trả thú cưng đã bị từ chối`,
       "other",
       `/profile/${request.requestedBy}?tab=return-request`
     );

@@ -28,10 +28,16 @@ async function getAll(shelterId) {
 async function create(data, createdBy, shelterId) {
   try {
     const { title, species, description } = data;
+    if (!title) {
+      throw new Error("Tiêu đề là bắt buộc");
+    }
+    if(!species) {
+      throw new Error("Yêu cầu chọn loài cho mẫu");
+    }
     const checkSpecies = await db.Species.findById(species);
     if (!checkSpecies) {
       throw new Error("Loài không tồn tại");
-    }
+    } 
     const addData = new db.AdoptionTemplate({
       title: title,
       species: species,

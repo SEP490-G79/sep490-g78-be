@@ -98,6 +98,16 @@ const editListQuestions = async (questionsData) => {
         type: item.type?.toUpperCase?.() || "TEXT",
       };
 
+      if(!questionData.title || !questionData.type) {
+        throw new Error("Tiêu đề và loại câu hỏi là bắt buộc");
+      }
+      if (questionData.type !== "TEXT" && !questionData.options?.length) {
+        throw new Error("Câu hỏi loại trắc nghiệm phải có ít nhất một tùy chọn");
+      }
+      if (questionData.type !== "TEXT" && questionData.options.some(option => !option.title)) {
+        throw new Error("Tất cả tùy chọn phải có tiêu đề");
+      }
+
       let question;
 
       if (isUpdate) {
@@ -117,7 +127,7 @@ const editListQuestions = async (questionsData) => {
 
     return results;
   } catch (error) {
-    throw new Error("Lỗi khi chỉnh sửa câu hỏi " + error.message);
+    throw error
   }
 };
 

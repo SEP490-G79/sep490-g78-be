@@ -41,7 +41,15 @@ const getAllPetsByShelterForSubmission = async (shelterId, page = 1, limit = 8, 
   const skip = (page - 1) * limit;
 
   const matchFilter = { shelter: new mongoose.Types.ObjectId(shelterId) };
-  if (status) matchFilter.status = status;
+if (status) {
+  if (Array.isArray(status)) {
+    matchFilter.status = { $in: status };
+  } else {
+    matchFilter.status = status;
+  }
+}
+
+
 
   const pets = await Pet.aggregate([
     { $match: matchFilter },

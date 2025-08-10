@@ -3,6 +3,7 @@ const db = require("../models");
 const fs = require("fs/promises");
 const notificationService = require("./notification.service");
 const adoptionSubmissionService = require("./adoptionSubmission.service");
+const socketIoService = require("./socket-io.service");
 
 const getByShelter = async (shelterId) => {
   try {
@@ -32,6 +33,10 @@ const getByUser = async (userId) => {
         "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
       )
       .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+      if(!consentForms || consentForms.length === 0) {
+         throw new Error("Không tìm thấy bản đồng ý nào cho người dùng này.");
+      }
 
     return consentForms;
   } catch (error) {
@@ -344,18 +349,21 @@ const changeFormStatusShelter = async (consentFormId, status) => {
           throw new Error("Lỗi khi cập nhật trạng thái đơn đăng ký nhận nuôi!");
         }
 
-        await notificationService.createNotification(
+        const approvedNoti = await notificationService.createNotification(
           updatedConsentForm.createdBy._id,
           [updatedConsentForm.adopter._id],
           `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
           "adoption",
           `/adoption-form/${updatedConsentForm.pet._id}`
         );
+        socketIoService.to(`user:${updatedConsentForm.adopter._id}`,`notification`,approvedNoti)
+
+
       } catch (rejectError) {
         await db.ConsentForm.findByIdAndUpdate(consentFormId, {
           status: oldStatus,
         });
-        throw new Error("Cập nhật thất bại!");
+        throw new Error(rejectError||"Cập nhật thất bại!");
       }
     }
 

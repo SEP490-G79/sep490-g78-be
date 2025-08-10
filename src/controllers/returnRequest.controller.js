@@ -20,7 +20,7 @@ const createReturnRequest = async (req, res) => {
       );
     }
     console.error("Error creating return request:", error.message);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -53,7 +53,7 @@ const updateReturnRequest = async (req, res) => {
       );
     }
     console.error("Error updating return request:", error.message);
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -66,7 +66,7 @@ const updateReturnRequest = async (req, res) => {
 //     });
 //     res.status(200).json(data);
 //   } catch (error) {
-//     res.status(400).json({ error: error.message });
+//     res.status(400).json({ message: error.message });
 //   }
 // };
 
@@ -76,7 +76,7 @@ const getReturnRequestsByUser = async (req, res) => {
     const result = await returnRequestService.getReturnRequestsByUser(userId);
     res.status(200).json(result);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -86,7 +86,7 @@ const getReturnRequestsByUserId = async (req, res) => {
     const result = await returnRequestService.getReturnRequestsByUserId(userId);
     res.status(200).json(result);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -98,7 +98,7 @@ const getReturnRequestsByShelter = async (req, res) => {
     );
     res.status(200).json(result);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -116,7 +116,7 @@ const deleteReturnRequest = async (req, res) => {
       data: result,
     });
   } catch (error) {
-    res.status(403).json({ error: error.message });
+    res.status(403).json({ message: error.message });
   }
 };
 
@@ -133,7 +133,7 @@ const approveReturnRequest = async (req, res) => {
       .status(200)
       .json({ message: "Yêu cầu đã được chấp thuận", data: result });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -150,7 +150,7 @@ const rejectReturnRequest = async (req, res) => {
     );
     res.status(200).json({ message: "Yêu cầu đã bị từ chối", data: result });
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 

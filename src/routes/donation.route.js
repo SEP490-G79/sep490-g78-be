@@ -7,6 +7,8 @@ const {isAdmin} = require("../middlewares/admin.middleware")
 const { donationController } = require("../controllers");
 donationRouter.use(bodyParser.json());
 
+donationRouter.post("/create-payment-link", donationController.createPaymentLink);
+donationRouter.post("/webhook", donationController.handleWebhook);
 donationRouter.post("/save-donation", donationController.saveDonation);
 donationRouter.get("/get-donations-history", verifyAccessToken, donationController.getDonationsHistory);
 donationRouter.get("/get-all-donations", verifyAccessToken, donationController.getAllDonations);
