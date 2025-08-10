@@ -245,6 +245,7 @@ const getReturnRequestsByUser = async (userId) => {
         createdAt: request.createdAt,
         updatedAt: request.updatedAt,
         approvedBy: safeUser(request.approvedBy),
+        rejectReason: request.rejectReason || null,
       };
     });
 
@@ -289,6 +290,7 @@ const getReturnRequestsByUserId = async (userId) => {
         createdAt: request.createdAt,
         updatedAt: request.updatedAt,
         approvedBy: safeUser(request.approvedBy),
+        rejectReason: request.rejectReason || null,
       };
     });
 
@@ -381,7 +383,7 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     if (request.status !== "pending") {
       throw new Error("Không thể duyệt yêu cầu không ở trạng thái pending");
     }
-    const oldAdopter = request?.adopter?._id;
+    const oldAdopter = request.pet?.adopter || null;
 
     const updatedRequest = await db.ReturnRequest.findByIdAndUpdate(
       requestId,
@@ -394,12 +396,9 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     }
 
     const updatedPet = await db.Pet.findByIdAndUpdate(
-      request.pet._id,
-      {
-        status: "unavailable",
-        adopter: null,
-      },
-      { new: true }
+      petId,
+      { $set: { status: "unavailable", adopter: null } },
+      { new: true, session }
     );
 
     if (!updatedPet) {
@@ -443,11 +442,11 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     //   },
     //   { status: "rejected" }
     // );
-
+    const shelter = await db.Shelter.findById(request.shelter).select("name");
     await NotificationService.createNotification(
       shelterUserId,
       [request.requestedBy],
-      "Yêu cầu trả thú cưng đã được duyệt",
+      ` - ${shelter?.name || "Trạm cứu hộ"} Yêu cầu trả thú cưng đã được duyệt`,
       "other",
       `/profile/${request.requestedBy}?tab=return-request`
     );
@@ -487,10 +486,12 @@ const rejectReturnRequest = async (requestId, shelterUserId, rejectReason) => {
       { new: true }
     );
 
+    const shelter = await db.Shelter.findById(request.shelter).select("name");
+
     await NotificationService.createNotification(
       shelterUserId,
       [request.requestedBy],
-      "Yêu cầu trả thú cưng đã bị từ chối",
+      ` - ${shelter?.name || "Trạm cứu hộ"} Yêu cầu trả thú cưng đã bị từ chối`,
       "other",
       `/profile/${request.requestedBy}?tab=return-request`
     );
