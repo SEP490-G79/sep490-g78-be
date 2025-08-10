@@ -107,9 +107,6 @@ const editListQuestions = async (questionsData) => {
       if (questionData.type !== "TEXT" && questionData.options.some(option => !option.title)) {
         throw new Error("Tất cả tùy chọn phải có tiêu đề");
       }
-      if (questionData.type !== "TEXT" && questionData.options.some(option => option.isTrue === undefined)) {
-        throw new Error("Tất cả tùy chọn phải có trạng thái isTrue");
-      }
 
       let question;
 
@@ -130,7 +127,7 @@ const editListQuestions = async (questionsData) => {
 
     return results;
   } catch (error) {
-    throw new Error("Lỗi khi chỉnh sửa câu hỏi: " + error.message);
+    throw error
   }
 };
 

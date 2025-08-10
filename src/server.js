@@ -36,6 +36,10 @@ const http = require("http");
 const db = require("./models");
 const app = express();
 const session = require("express-session");
+const { createServer } = require("http");
+const { SocketIO } = require("./configs");
+const socketIoService = require("./services/socket-io.service");
+const server = createServer(app);
 
 // Sử dụng cors middleware để cho phép request từ localhost:3000
 app.use(
@@ -47,7 +51,7 @@ app.use(
     methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
     credentials: true,
   })
-);
+);  
 app.use(express.json({ limit: "5mb" }));
 if (process.env.NODE_ENV == "development") {
   app.use(morgan("dev"));
@@ -107,9 +111,13 @@ app.use(async (err, req, res, next) => {
     .json({ error: { status: err.status, message: err.message } });
 });
 
+
+SocketIO.init(server); 
+socketIoService.init();
+
 const port = process.env.PORT || 3000;
 
-app.listen(port, () => {
+server.listen(port, () => {
   console.log(`Server is running at port : ${port}`);
   db.connectDB();
 });
