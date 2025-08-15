@@ -7,6 +7,7 @@ const { mailer } = require("../configs");
 const { default: mongoose } = require("mongoose");
 const { format } = require("date-fns");
 const notificationService = require("../services/notification.service");
+const socketIoService = require("../services/socket-io.service");
 
 
 const getAdtoptionRequestList = async (req, res) => {
@@ -64,52 +65,107 @@ const createAdoptionSubmission = async (req, res) => {
         .json({ message: "Thú cưng không còn khả dụng để nhận nuôi." });
     }
 
-    // 3. Validate câu hỏi trong form
-    const formQuestionIds = adoptionForm.questions.map((q) => q._id.toString());
-    const answerQuestionIds = answers.map((a) => a.questionId?.toString());
+    // 3. Lấy toàn bộ câu hỏi của form để biết priority
+    const formQuestions = await db.Question.find({
+      _id: { $in: adoptionForm.questions },
+    });
 
+    // Map tiện tra cứu theo _id
+    const formQMap = new Map(formQuestions.map(q => [q._id.toString(), q]));
+
+    // Tập id câu hỏi bắt buộc (priority !== 'none')
+    const requiredQIds = formQuestions
+      .filter(q => q.priority !== "none")
+      .map(q => q._id.toString());
+
+    // 4. Kiểm tra từng answer người dùng gửi lên: phải thuộc form
+    const answerQuestionIds = answers.map(a => a.questionId?.toString());
+
+    // Nếu có câu hỏi nào trong câu trả lời không thuộc form → báo lỗi
     for (const qId of answerQuestionIds) {
-      if (!formQuestionIds.includes(qId)) {
+      if (!formQMap.has(qId)) {
         return res.status(400).json({
           message: `Câu hỏi với ID '${qId}' không thuộc form này.`,
         });
       }
     }
 
-    // 4. Lấy thông tin câu hỏi để validate selections
-    const questions = await db.Question.find({
-      _id: { $in: answerQuestionIds },
-    });
-    const questionMap = new Map(questions.map((q) => [q._id.toString(), q]));
+    // 5. Bảo đảm tất cả câu hỏi bắt buộc đều có đáp án (không rỗng)
+    // 5. Bảo đảm tất cả câu hỏi bắt buộc đều có đáp án (không rỗng)
+    for (const reqId of requiredQIds) {
+      const ans = answers.find(a => a.questionId?.toString() === reqId);
+
+      // thiếu hoặc không phải mảng
+      if (!ans || !Array.isArray(ans.selections)) {
+        const qTitle = formQMap.get(reqId)?.title || reqId;
+        return res.status(400).json({
+          message: `Bạn phải trả lời câu hỏi bắt buộc: '${qTitle}'.`,
+        });
+      }
+
+      // coi "", "   " là rỗng
+      const hasFilled = ans.selections.some(sel =>
+        sel != null && (typeof sel !== "string" || sel.trim() !== "")
+      );
+      if (!hasFilled) {
+        const qTitle = formQMap.get(reqId)?.title || reqId;
+        return res.status(400).json({
+          message: `Bạn phải trả lời câu hỏi bắt buộc: '${qTitle}'.`,
+        });
+      }
+    }
+
+
+    // 6. Validate nội dung selections theo type
 
     for (const answer of answers) {
-      const question = questionMap.get(answer.questionId?.toString());
+      const qId = answer.questionId?.toString();
+      const question = formQMap.get(qId);
       if (!question) {
         return res.status(400).json({
           message: `Không tìm thấy câu hỏi với ID: ${answer.questionId}`,
         });
       }
 
-      const { type, options } = question;
-      const selections = answer.selections;
+      const { type, options, priority } = question;
+      const raw = answer.selections;
 
-      if (!Array.isArray(selections)) {
+      // selections phải là mảng nếu có gửi lên
+      if (raw != null && !Array.isArray(raw)) {
         return res.status(400).json({
           message: `Answer cho câu hỏi '${question.title}' phải là một mảng.`,
         });
       }
 
+      // LỌC rỗng: bỏ null/undefined và chuỗi rỗng/space
+      const selections = Array.isArray(raw)
+        ? raw.filter(v => v != null && (typeof v !== "string" || v.trim() !== ""))
+        : [];
+
+      const isRequired = priority !== "none";
+      const hasAny = selections.length > 0;
+
+      if (isRequired && !hasAny) {
+        return res.status(400).json({
+          message: `Bạn phải chọn/nhập câu trả lời cho câu hỏi '${question.title}'.`,
+        });
+      }
+
+      // Optional + không có trả lời -> bỏ qua validate type
+      if (!isRequired && !hasAny) continue;
+
+      // === Validate theo type, dùng selections đã lọc ===
       if (type === "SINGLECHOICE") {
-        if (!options.some((opt) => opt.title === selections[0])) {
+        if (!selections[0] || !options.some(opt => opt.title === selections[0])) {
           return res.status(400).json({
-            message: `Lựa chọn '${selections[0]}' không hợp lệ cho câu hỏi '${question.title}'.`,
+            message: `Lựa chọn '${selections[0] ?? ""}' không hợp lệ cho câu hỏi '${question.title}'.`,
           });
         }
       }
 
       if (type === "MULTIPLECHOICE") {
         for (const sel of selections) {
-          if (!options.some((opt) => opt.title === sel)) {
+          if (!options.some(opt => opt.title === sel)) {
             return res.status(400).json({
               message: `Lựa chọn '${sel}' không hợp lệ cho câu hỏi '${question.title}'.`,
             });
@@ -119,7 +175,7 @@ const createAdoptionSubmission = async (req, res) => {
 
       if (type === "YESNO") {
         const validYesNo = ["Có", "Không"];
-        if (!validYesNo.includes(selections[0])) {
+        if (!selections[0] || !validYesNo.includes(selections[0])) {
           return res.status(400).json({
             message: `Câu hỏi '${question.title}' chỉ chấp nhận 'Có' hoặc 'Không'.`,
           });
@@ -127,16 +183,15 @@ const createAdoptionSubmission = async (req, res) => {
       }
 
       if (type === "TEXT") {
-        if (
-          typeof selections[0] !== "string" ||
-          !selections[0].trim()
-        ) {
+        const val = selections[0]; // đã được lọc rỗng ở trên
+        if (typeof val !== "string") {
           return res.status(400).json({
             message: `Câu hỏi '${question.title}' yêu cầu một câu trả lời dạng văn bản.`,
           });
         }
       }
     }
+
 
     // 5. Đếm số pet đã nhận trong 1 tháng
     const oneMonthAgo = new Date();
@@ -154,21 +209,22 @@ const createAdoptionSubmission = async (req, res) => {
     let maxScore = 0;
 
     for (const answer of answers) {
-      const question = questionMap.get(answer.questionId.toString());
+      const question = formQMap.get(answer.questionId.toString());
       if (!question) continue;
 
-      const correctOptions = question.options.filter((opt) => opt.isTrue);
+      const correctOptions = question.options.filter(opt => opt.isTrue);
       const totalCorrect = correctOptions.length;
       if (totalCorrect === 0) continue;
 
-      const userCorrect = (answer.selections || []).filter((sel) =>
-        correctOptions.some((opt) => opt.title === sel)
+      const userCorrect = (answer.selections || []).filter(sel =>
+        correctOptions.some(opt => opt.title === sel)
       ).length;
 
       const weight = weightMap[question.priority] || 0;
       maxScore += weight;
       totalScore += (userCorrect / totalCorrect) * weight;
     }
+
 
     const matchPercentage =
       maxScore > 0 ? Math.round((totalScore / maxScore) * 100) : 0;
@@ -216,6 +272,8 @@ const createAdoptionSubmission = async (req, res) => {
     const saved = await submission.save();
     res.status(201).json(saved);
 
+
+
     // Gửi thông báo cho shelter 
     const shelterReceivers = shelter.members.filter(
       (m) => m.roles?.includes("manager") || m.roles?.includes("staff")
@@ -227,14 +285,29 @@ const createAdoptionSubmission = async (req, res) => {
       const content = `đã gửi yêu cầu nhận nuôi "${form.pet.name}"`;
       const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${form.pet._id}`;
 
-      await notificationService.createNotification(
+      const notification = await notificationService.createNotification(
         userId,
         receiverIds,
         content,
         "adoption",
         redirectUrl
       );
+
+      //  receiverIds.forEach((rid) => {
+      //   socketIoService.to(`user:${rid}`, "notification", notification);
+      // });
+      socketIoService.to(`shelter:${shelter._id}`, "notification", notification);
+
     }
+    socketIoService.to(
+      `shelter:${shelter._id}`,
+      "adoptionSubmission:created",
+      {
+        petId: form.pet._id.toString(),
+        submissionId: saved._id.toString(),
+      }
+    );
+
 
 
     setTimeout(async () => {
@@ -363,7 +436,6 @@ const getSubmissionsByPetIds = async (req, res) => {
 // update status of submission
 const updateSubmissionStatus = async (req, res) => {
   try {
-
     const { submissionId, status } = req.body;
     const reviewedBy = req.payload.id;
     if (!submissionId || !status) {
@@ -372,70 +444,126 @@ const updateSubmissionStatus = async (req, res) => {
       });
     }
 
-    const updateSubmission =
-      await adoptionSubmissionService.updateSubmissionStatus(
-        submissionId,
-        status
-      );
+    const updated = await adoptionSubmissionService.updateSubmissionStatus(
+      submissionId,
+      status
+    );
 
-    res.status(200).json({ status: updateSubmission.status });
+    res.status(200).json({ status: updated.status });
 
-    if (status === "rejected") {
+    // Notifications + Socket
+    try {
       const submission = await AdoptionSubmission.findById(submissionId)
-        .populate("performedBy", "email fullName")
+        .populate("performedBy", "_id email fullName")
         .populate({
           path: "adoptionForm",
           populate: {
             path: "pet",
-            populate: { path: "shelter", select: "name" },
+            populate: { path: "shelter", select: "_id name members" },
           },
+        })
+        .populate({
+          path: "interview",
+          populate: { path: "performedBy", select: "_id fullName email avatar" },
         });
-      const user = submission?.performedBy;
-      const pet = submission?.adoptionForm?.pet;
+
+      if (!submission) return;
+
+      const user = submission.performedBy;
+      const pet = submission.adoptionForm?.pet;
+      const shelter = pet?.shelter;
       const petId = pet?._id;
       const petName = pet?.name || "thú cưng";
-      const shelterName = pet?.shelter?.name || "Trung tâm cứu hộ";
+      const shelterName = shelter?.name || "Trung tâm cứu hộ";
+      const redirectUrl = `/shelters/${shelter._id}/management/submission-forms/${petId}`;
 
-      // Gửi thông báo
-      if (user?._id) {
-        const content = `Đơn nhận nuôi bé "${petName}" của bạn đã bị từ chối.`;
-        const redirectUrl = `/adoption-form/${petId}/${submissionId}`;
+      // Map nội dung thông báo theo status
+      const userMsgMap = {
+        pending: `Trạng thái đơn nhận nuôi "${petName}" của "${user?.fullName}" đã chuyển về "Chờ duyệt".`,
+        scheduling: `Đơn nhận nuôi "${petName}" của "${user?.fullName}" đã được duyệt.`,
+        interviewing: `Đơn nhận nuôi "${petName}" của "${user?.fullName}" đang chờ phỏng vấn.`,
+        reviewed: `Đơn nhận nuôi "${petName}" của "${user?.fullName}" đã được phỏng vấn.`,
+        approved: `Đơn nhận nuôi "${petName}" của "${user?.fullName}" đã được chấp thuận.`,
+        rejected: `Đơn nhận nuôi "${petName}" của "${user?.fullName}" đã bị từ chối.`,
+      };
 
-        await notificationService.createNotification(
+      // Notification cho NGƯỜI NỘP ĐƠN
+      // if (user?._id) {
+      //   const content = userMsgMap[status] || `Đơn nhận nuôi "${petName}" đã cập nhật trạng thái: ${status}.`;
+      //   const notif = await notificationService.createNotification(
+      //     reviewedBy,
+      //     [user._id],
+      //     content,
+      //     "adoption",
+      //     redirectUrlUser
+      //   );
+      //   // emit tới user
+      //   socketIoService.to(`user:${user._id.toString()}`, "notification", notif);
+      // }
+
+      // Notification cho NHÂN VIÊN PHỎNG VẤN nếu có
+
+      const assignedId =
+        submission?.interview?.performedBy?._id?.toString() ??
+        submission?.interview?.performedBy?.toString() ??
+        null;
+      const receiverIds = (shelter?.members ?? [])
+        .filter(m =>
+          m.roles?.includes("manager") ||
+          (m.roles?.includes("staff") && assignedId && m._id.toString() === assignedId)
+        )
+        .map(m => m._id.toString());
+      if (receiverIds.length > 0) {
+        const contentStaff = userMsgMap[status] || `Đơn nhận nuôi "${petName}" đang cập nhật trạng thái: ${status}.`;
+        const notifStaff = await notificationService.createNotification(
           reviewedBy,
-          [user._id],
-          content,
+          receiverIds,
+          contentStaff,
           "adoption",
           redirectUrl
         );
+        receiverIds.forEach((rid) => {
+          socketIoService.to(`user:${rid.toString()}`, "notification", notifStaff);
+        });
       }
 
-      // Gửi email
-      try {
-        if (user?.email) {
-          const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
-          const body = `
-        <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-          <h2>Thông báo từ chối đơn nhận nuôi</h2>
-          <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
-          <p>Chúng tôi rất tiếc phải thông báo rằng đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
-          <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục yêu thương và đồng hành cùng các bé thú cưng khác trong tương lai.</p>
-          <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
-        </div>
-      `;
-          await mailer.sendEmail(user.email, subject, body);
-        }
-      } catch (error) {
-        console.error("Lỗi gửi email từ chối nhận nuôi:", error);
+      if (shelter?._id) {
+        socketIoService.to(
+          `shelter:${shelter._id}`,
+          "adoptionSubmission:statusChanged",
+          {
+            submissionId: submissionId.toString(),
+            petId: petId?.toString(),
+            status: updated.status,
+          }
+        );
       }
+
+      if (status === "rejected" && user?.email) {
+        const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
+        const body = `
+          <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+            <h2>Thông báo từ chối đơn nhận nuôi</h2>
+            <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
+            <p>Đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
+            <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục đồng hành cùng các bé khác trong tương lai.</p>
+            <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
+          </div>`;
+        mailer.sendEmail(user.email, subject, body).catch(err =>
+          console.error("Lỗi gửi email từ chối nhận nuôi:", err)
+        );
+      }
+    } catch (sideErr) {
+      console.error("Lỗi gửi notification/socket sau khi update status:", sideErr);
     }
   } catch (error) {
-    console.error("Lỗi khi lấy submissions:", error);
+    console.error("Lỗi khi cập nhật submission status:", error);
     res
       .status(400)
-      .json({ message: "Lỗi khi lấy submissions", error: error.message });
+      .json({ message: "Lỗi khi cập nhật submission", error: error.message });
   }
 };
+
 // schedule interview
 const createInterviewSchedule = async (req, res) => {
   try {
@@ -482,20 +610,46 @@ const createInterviewSchedule = async (req, res) => {
       const pet = submission?.adoptionForm?.pet;
       const petId = pet?._id;
       const petName = pet?.name || "thú cưng";
+      const shelter = pet?.shelter;
       const shelterName = pet?.shelter?.name || "Trung tâm cứu hộ";
+
+      if (user?._id) {
+        socketIoService.to(`user:${user._id.toString()}`,
+          "adoptionSubmission:interviewSchedule",
+          {
+            submissionId: submissionId.toString(),
+            petId: pet?._id?.toString(),
+          }
+        );
+      }
+      if (shelter?._id) {
+        //   socketIoService.to(`shelter:${shelter._id}`,
+        // "adoptionSubmission:createSchedule",
+        // {
+        //   submissionId: submissionId.toString(),
+        //   petId: pet?._id?.toString(),
+        // }    
+        // );
+        socketIoService.to(
+          `shelter:${shelter._id}`,
+          "adoptionSubmission:statusChanged",
+          { submissionId: submissionId.toString(), petId: pet?._id?.toString(), status: "interviewing" }
+        );
+      }
 
       // Notification
       if (user?._id) {
         const content = `Đơn nhận nuôi bé "${petName}" của bạn đã được xét duyệt. Vui lòng chọn lịch phỏng vấn.`;
         const redirectUrl = `/adoption-form/${petId}/${submissionId}`;
 
-        await notificationService.createNotification(
+        const notification = await notificationService.createNotification(
           reviewedBy,
           [user._id],
           content,
           "adoption",
           redirectUrl
         );
+        socketIoService.to(`user:${user._id.toString()}`, "notification", notification);
       }
 
       // Gửi email (không await)
@@ -538,7 +692,7 @@ const createInterviewSchedule = async (req, res) => {
       const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({ message: messages.join(" ") });
     }
-    
+
 
     // Thêm dòng này để hiển thị lỗi Error thường (do bạn throw trong service)
     if (error.message) {
@@ -611,24 +765,35 @@ const selectInterviewSchedule = async (req, res) => {
     const selectedDate = result?.interview?.selectedSchedule;
 
     if (shelter?.members?.length && selectedDate) {
+
+      const assignedId = submission?.interview?.performedBy?.toString();
       const receivers = shelter.members.filter(
-        (m) => m.roles?.includes("manager") || m.roles?.includes("staff")
+        (m) => m.roles?.includes("manager") || (m.roles?.includes("staff") && m._id.toString() === assignedId)
       );
-
       const receiverIds = receivers.map((m) => m._id);
-
       if (receiverIds.length > 0) {
         const content = `đã chọn lịch phỏng vấn vào ngày ${new Date(selectedDate).toLocaleDateString("vi-VN")} cho đơn nhận nuôi bé "${petName}".`;
-
-        await notificationService.createNotification(
+        const notification = await notificationService.createNotification(
           userId,
           receiverIds,
           content,
           "adoption",
           redirectUrl
         );
+        receiverIds.forEach((rid) => {
+          socketIoService.to(`user:${rid}`, "notification", notification);
+        });
       }
+      socketIoService.to(`shelter:${shelter._id}`,
+        "adoptionSubmission:selectedSchedule",
+        {
+          submissionId: submissionId.toString(),
+          petId: pet?._id?.toString(),
+        }
+      );
+
     }
+
 
     return res.status(200).json({
       message: "Đã chọn lịch phỏng vấn",
@@ -718,7 +883,7 @@ const updateInterviewPerformer = async (req, res) => {
     });
   } catch (error) {
     console.error("Lỗi cập nhật nhân viên phỏng vấn:", error);
-    res.status(error.statusCode ||400).json({ message: error.message });
+    res.status(error.statusCode || 400).json({ message: error.message });
   }
 };
 

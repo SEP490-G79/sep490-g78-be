@@ -79,12 +79,50 @@ const verifyGoogleCallbackAdmin = passport.authenticate("google-admin", {
   failureRedirect: "http://localhost:3000/error",
 });
 
+const verifySocketAccessToken = (req, res, next) => {
+  if (!req.headers["authorization"]) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify({
+        error: { status: 401, message: "Chưa cung cấp access token!" },
+      })
+    );
+  }
+
+  const authHeader = req.headers["authorization"];
+  const bearerToken = authHeader.split(" ");
+  const token = bearerToken[1];
+
+  if (!token) {
+    res.writeHead(401, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify({
+        error: { status: 401, message: "Access token không hợp lệ!" },
+      })
+    );
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
+    if (err) {
+      res.writeHead(401, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          error: { status: 401, message: "Access token không hợp lệ!" },
+        })
+      );
+    }
+    req.payload = payload;
+    req.user = next();
+  });
+};
+
 const authMiddleware = {
   verifyAccessToken,
   optionalVerifyAccessToken,
   isActive,
   verifyGoogleCallback,
   verifyGoogleCallbackAdmin,
+  verifySocketAccessToken,
 };
 
 module.exports = authMiddleware;

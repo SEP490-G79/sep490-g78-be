@@ -245,9 +245,14 @@ const editPost = async (userId, postId, postData, files) => {
       }
     }
 
+    if (!postData.title || postData.title.trim() === "") {
+      throw new Error("Tiêu đề không được để trống");
+    }
+
     const keepPhotos = postData.existingPhotos
       ? JSON.parse(postData.existingPhotos)
       : post.photos;
+      
 
     const parsedLocation =
       typeof postData.location === "string"

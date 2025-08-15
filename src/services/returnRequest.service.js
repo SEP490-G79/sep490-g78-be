@@ -396,9 +396,9 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
     }
 
     const updatedPet = await db.Pet.findByIdAndUpdate(
-      petId,
+      request.pet,
       { $set: { status: "unavailable", adopter: null } },
-      { new: true, session }
+      { new: true }
     );
 
     if (!updatedPet) {
@@ -416,7 +416,7 @@ const approveReturnRequest = async (requestId, shelterUserId) => {
 
     if (!updatedForm) {
       await db.Pet.findByIdAndUpdate(
-        request.pet._id,
+        request.pet,
         { status: "available", adopter: oldAdopter },
         { new: true }
       );

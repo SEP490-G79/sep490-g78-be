@@ -37,7 +37,7 @@ const createNotification = async (
       redirectUrl,
     };
 
-    const createdNotification = await db.Notification.create(newNotification);
+    let createdNotification = await db.Notification.create(newNotification);
 
     if (createdNotification) {
       await db.User.updateMany(
@@ -50,7 +50,27 @@ const createNotification = async (
       );
     }
 
-    return createdNotification;
+    // Populate thông tin người gửi (from)
+    createdNotification = await db.Notification.findById(
+      createdNotification._id
+    )
+      .populate("from", "_id fullName avatar");
+
+    // Format trả về giống getAllNotifications
+    return {
+      _id: createdNotification._id,
+      from: createdNotification.from,
+      receivers: validReceivers.map(r => ({
+        _id: r._id,
+        fullName: r.fullName,
+        avatar: r.avatar
+      })),
+      content: createdNotification.content,
+      redirectUrl: createdNotification.redirectUrl,
+      seen: false,
+      createdAt: createdNotification.createdAt,
+      updatedAt: createdNotification.updatedAt,
+    };
   } catch (error) {
     // console.error("Error creating notification:", error.message);
     throw error;
