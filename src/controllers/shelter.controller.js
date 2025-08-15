@@ -23,19 +23,14 @@ const getShelterRequestByUserId = async (req, res, next) => {
 
 const sendShelterEstablishmentRequest = async (req, res, next) => {
   try {
-    const { id } = req.payload;
-    const requestData = {
-      ...req.body,
-      location: JSON.parse(req?.body.location),
-    };
     const response = await shelterService.sendShelterEstablishmentRequest(
-      id,
-      requestData,
-      req.files
+      req.payload.id,
+      req.body,
+      req.file
     );
     res.status(200).json(response);
   } catch (error) {
-    res.status(404).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -243,7 +238,19 @@ const changeShelterMemberRole = async (req, res) => {
     );
     res.status(200).json(updatedData);
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
+  }
+};
+const cancelRequestIntoShelter = async (req, res) => {
+  try {
+    const updatedData = await shelterService.cancelRequestIntoShelter(
+      req.payload.id,
+      req.params.shelterId,
+      req.params.requestId
+    );
+    res.status(200).json(updatedData);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -296,7 +303,7 @@ const getAdoptedPetsByWeek = async (req, res) => {
     res.json(data);
   } catch (error) {
     console.error("Error getAdoptedPetsByWeek:", error);
-    res.status(500).json({ message: "Server error" });
+    res.status(400).json({ message: "Server error" });
   }
 };
 
@@ -307,7 +314,7 @@ const getAdoptionFormsByWeek = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error("getAdoptionFormsByWeek error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -318,7 +325,7 @@ const getSubmissionStatistics = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error("getSubmissionStatistics error:", error);
-    res.status(500).json({ message: "Lỗi khi lấy thống kê đơn nhận nuôi" });
+    res.status(400).json({ message: "Lỗi khi lấy thống kê đơn nhận nuôi" });
   }
 };
 const getAdoptionSubmissionsByWeek = async (req, res) => {
@@ -328,7 +335,7 @@ const getAdoptionSubmissionsByWeek = async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error("getAdoptionSubmissionsByWeek error:", error);
-    res.status(500).json({ message: error.message });
+    res.status(400).json({ message: error.message });
   }
 };
 
@@ -354,6 +361,7 @@ const shelterController = {
   reviewShelterRequest,
   getShelterDashboardStatistics,
   changeShelterMemberRole,
+  cancelRequestIntoShelter,
 
   //MANAGER
   getAdoptedPetsByWeek,

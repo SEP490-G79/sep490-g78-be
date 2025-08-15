@@ -378,84 +378,84 @@ async function getRecommendedBlogs(blogId, shelterId) {
 
 
 // ADMIN
-async function getAllBlogs() {
-  try {
-    const blogs =  await Blog.find({status: {$nin: ["deleted", "moderating"]}}).populate("shelter").sort({createdAt: -1});
-    const result = blogs.map((blog) => ({
-      _id: blog._id,
-      shelter: {
-        _id: blog.shelter._id,
-        name: blog.shelter.name,
-        avatar: blog.shelter.avatar,
-        location: blog.shelter.location,
-      },
-      thumbnail_url: blog.thumbnail_url,
-      title: blog.title,
-      description: blog.description,
-      content: blog.content,
-      status: blog.status,
-      createdAt: blog.createdAt,
-      updatedAt: blog.updatedAt,
-    }));
+// async function getAllBlogs() {
+//   try {
+//     const blogs =  await Blog.find({status: {$nin: ["deleted", "moderating"]}}).populate("shelter").sort({createdAt: -1});
+//     const result = blogs.map((blog) => ({
+//       _id: blog._id,
+//       shelter: {
+//         _id: blog.shelter._id,
+//         name: blog.shelter.name,
+//         avatar: blog.shelter.avatar,
+//         location: blog.shelter.location,
+//       },
+//       thumbnail_url: blog.thumbnail_url,
+//       title: blog.title,
+//       description: blog.description,
+//       content: blog.content,
+//       status: blog.status,
+//       createdAt: blog.createdAt,
+//       updatedAt: blog.updatedAt,
+//     }));
 
-    return result;
-  } catch (error) {
-    throw error;
-  }
-}
-async function moderateBlog(blogId, decision = "reject") {
-  try {
-    const blog = await Blog.findById(blogId);
-    if(!blog){
-      throw new Error("Không tìm thấy blog!")
-    }
-    if(blog.status !== "moderating"){
-      throw new Error("Blog không ở trạng thái chờ duyệt!")
-    }
+//     return result;
+//   } catch (error) {
+//     throw error;
+//   }
+// }
+// async function moderateBlog(blogId, decision = "reject") {
+//   try {
+//     const blog = await Blog.findById(blogId);
+//     if(!blog){
+//       throw new Error("Không tìm thấy blog!")
+//     }
+//     if(blog.status !== "moderating"){
+//       throw new Error("Blog không ở trạng thái chờ duyệt!")
+//     }
 
-    if(!["approve", "reject"].includes(decision)){
-      throw new Error("Không cung cấp quyết định phù hợp!")
-    }
-    if(decision === "approve"){
-      blog.status = "published"
-    }else{
-      blog.status = "rejected"
-    }
-    await blog.save();
+//     if(!["approve", "reject"].includes(decision)){
+//       throw new Error("Không cung cấp quyết định phù hợp!")
+//     }
+//     if(decision === "approve"){
+//       blog.status = "published"
+//     }else{
+//       blog.status = "rejected"
+//     }
+//     await blog.save();
     
-    return {
-      status: 200,
-      message: "Chấp thuận blog thành công"
-    };
-  } catch (error) {
-    throw error;
-  }
-}
-async function getModeratingBlogs() {
-  try {
-    const blogs =  await Blog.find({status: "moderating"}).populate("shelter").sort({createdAt: -1});
-    const result = blogs.map((blog) => ({
-      _id: blog._id,
-      shelter: {
-        _id: blog.shelter._id,
-        name: blog.shelter.name,
-        avatar: blog.shelter.avatar,
-        location: blog.shelter.location,
-      },
-      thumbnail_url: blog.thumbnail_url,
-      title: blog.title,
-      description: blog.description,
-      content: blog.content,
-      status: blog.status,
-      createdAt: blog.createdAt,
-      updatedAt: blog.updatedAt,
-    }));
+//     return {
+//       status: 200,
+//       message: "Chấp thuận blog thành công"
+//     };
+//   } catch (error) {
+//     throw error;
+//   }
+// }
+// async function getModeratingBlogs() {
+//   try {
+//     const blogs =  await Blog.find({status: "moderating"}).populate("shelter").sort({createdAt: -1});
+//     const result = blogs.map((blog) => ({
+//       _id: blog._id,
+//       shelter: {
+//         _id: blog.shelter._id,
+//         name: blog.shelter.name,
+//         avatar: blog.shelter.avatar,
+//         location: blog.shelter.location,
+//       },
+//       thumbnail_url: blog.thumbnail_url,
+//       title: blog.title,
+//       description: blog.description,
+//       content: blog.content,
+//       status: blog.status,
+//       createdAt: blog.createdAt,
+//       updatedAt: blog.updatedAt,
+//     }));
 
-    return result;
-  } catch (error) {
-    throw error;
-  }
-}
+//     return result;
+//   } catch (error) {
+//     throw error;
+//   }
+// }
 
 const blogService = {
   //USER
@@ -471,9 +471,9 @@ const blogService = {
   
 
   //ADMIN
-  getAllBlogs,
-  getModeratingBlogs,
-  moderateBlog,
+  // getAllBlogs,
+  // getModeratingBlogs,
+  // moderateBlog,
 };
 
 module.exports = blogService;

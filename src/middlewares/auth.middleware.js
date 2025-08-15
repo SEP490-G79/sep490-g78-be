@@ -1,38 +1,35 @@
 const jwt = require("jsonwebtoken");
-const createError = require("http-errors");
 const passport = require("passport");
 const { User } = require("../models");
 
 const verifyAccessToken = (req, res, next) => {
-  if (!req.headers["authorization"]) {
-    return res
-        .status(401)
-        .json({
-          error: { status: 401, message: "Chưa cung cấp access token!" },
-        });
-  }
-  const authHeader = req.headers["authorization"];
-  const bearerToken = authHeader.split(" ");
-  const token = bearerToken[1];
-
-  if (!token) {
-    return res
-        .status(401)
-        .json({
-          error: { status: 401, message: "Access token không hợp lệ!" },
-        });
-  }
-  jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
-    if (err) {
-      return res
-        .status(401)
-        .json({
-          error: { status: 401, message: "Access token không hợp lệ!" },
-        });
+  try {
+    if (!req.headers["authorization"]) {
+      return res.status(401).json({
+        error: { status: 401, message: "Chưa cung cấp access token!" },
+      });
     }
-    req.payload = payload;
-    req.user = next();
-  });
+    const authHeader = req.headers["authorization"];
+    const bearerToken = authHeader.split(" ");
+    const token = bearerToken[1];
+
+    if (!token) {
+      return res.status(401).json({
+        error: { status: 401, message: "Access token không hợp lệ!" },
+      });
+    }
+    jwt.verify(token, process.env.JWT_SECRET, (err, payload) => {
+      if (err) {
+        return res.status(401).json({
+          error: { status: 401, message: "Access token không hợp lệ!" },
+        });
+      }
+      req.payload = payload;
+    });
+    next();
+  } catch (error) {
+    next(error)
+  }
 };
 
 const optionalVerifyAccessToken = (req, res, next) => {

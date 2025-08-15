@@ -1,7 +1,6 @@
 const morgan = require("morgan");
 const express = require("express");
 const bodyParser = require("body-parser");
-const httpsErrors = require("http-errors");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
 
@@ -75,7 +74,7 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.get("/", async (req, res, next) => {
-  res.status(200).json({ message: "Server is running" });
+  res.status(200).json({ message: "Server đang chạy" });
 });
 
 // Định tuyến theo các chức năng thực tế
@@ -101,16 +100,26 @@ app.use("/return-requests", returnRequestRouter);
 // app.use("/notifications", );
 app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
 
-app.use(async (req, res, next) => {
-  next(httpsErrors(404, "Bad Request"));
-});
-app.use(async (err, req, res, next) => {
-  const resStatus = err.status || 500;
-  return res
-    .status(resStatus || 500)
-    .json({ error: { status: err.status, message: err.message } });
-});
 
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err); // tránh gửi error nhiều lần
+  const status = err.status || err.statusCode || 500;
+  const message = err.message || "Lỗi server!";
+  // Log debug ở be
+  console.error({
+    name: err.name,
+    message: err.message,
+    status,
+    method: req.method,
+    url: req.originalUrl,
+    stack: err.stack,
+  });
+
+  res.status(status).json({
+    status,
+    message
+  });
+});
 
 SocketIO.init(server); 
 socketIoService.init();
@@ -118,6 +127,6 @@ socketIoService.init();
 const port = process.env.PORT || 3000;
 
 server.listen(port, () => {
-  console.log(`Server is running at port : ${port}`);
+  console.log(`Server đang chạy tại port: ${port}`);
   db.connectDB();
 });
