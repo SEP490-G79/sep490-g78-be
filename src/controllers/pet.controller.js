@@ -30,9 +30,12 @@ const getAllPets = async (req, res) => {
 const getAllPetsForSubmission = async (req, res, next) => {
   try {
     const { shelterId } = req.params;
-    let status = req.query.status ?? req.query['status[]'];
-    if (typeof status === 'string') {
-      status = status.split(',').map(s => s.trim()).filter(Boolean);
+    let status = req.query.status ?? req.query["status[]"];
+    if (typeof status === "string") {
+      status = status
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
     const page = parseInt(req.query.page, 10) || 1;
     const limit = parseInt(req.query.limit, 10) || 8;
@@ -114,8 +117,12 @@ const disablePet = async (req, res) => {
     });
 
     if (existedForm.length > 0) {
-      return res.status(400).json({ message: "Không thể xóa bạn này do đang có hoặc đã từng có đơn nhận nuôi!" });
-
+      return res
+        .status(400)
+        .json({
+          message:
+            "Không thể xóa bạn này do đang có hoặc đã từng có đơn nhận nuôi!",
+        });
     }
 
     const updatedPet = await db.Pet.findByIdAndUpdate(
@@ -210,19 +217,60 @@ const getMedicalRecordsByPet = async (req, res) => {
   }
 };
 
+// const analyzePetImage = async (req, res) => {
+//   try {
+//     const { imageBase64 } = req.body;
+//     if (!imageBase64) {
+//       return res.status(400).json({ message: "Thiếu dữ liệu ảnh" });
+//     }
+
+//     const result = await analyzePetWithGPT(imageBase64);
+//     res.status(200).json(result);
+//   } catch (err) {
+//     res
+//       .status(500)
+//       .json({ message: "AI phân tích thất bại", error: err.message });
+//   }
+// };
+
 const analyzePetImage = async (req, res) => {
   try {
-    const { imageBase64 } = req.body;
-    if (!imageBase64) {
-      return res.status(400).json({ message: "Thiếu dữ liệu ảnh" });
+    const { colorsList, imageRaw } = req.body;
+
+    const speciesRaw = await speciesService.getAll();
+    const breedsRaw = await breedsService.getAll();
+
+    const speciesList = speciesRaw.map((species) => ({
+      name: species.name,
+      description: species.description,
+    }));
+
+    const breedsList = breedsRaw.map((breed) => ({
+      name: breed.name,
+      description: breed.description,
+    }));
+
+    if (!speciesList || !breedsList || !colorsList) {
+      return res
+        .status(400)
+        .json({ message: "Thiếu dữ liệu của loài, giống và màu sắc" });
     }
 
-    const result = await analyzePetWithGPT(imageBase64);
+    if (!imageRaw) {
+      res.status(400).json({ message: "Thiếu dữ liệu ảnh" });
+    }
+
+    const result = await analyzePetWithGPT(
+      imageRaw,
+      speciesList,
+      breedsList,
+      colorsList
+    );
     res.status(200).json(result);
   } catch (err) {
     res
-      .status(500)
-      .json({ message: "AI phân tích thất bại", error: err.message });
+      .status(400)
+      .json({ message: err.message || "Lỗi khi phân tích hình ảnh!" });
   }
 };
 
