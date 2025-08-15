@@ -68,22 +68,35 @@ const getShelterById = async (shelterId) => {
 
 const getShelterRequestByUserId = async (userId) => {
   try {
+    
     const shelter = await Shelter.find({ "members._id": userId }).sort({createdAt: -1});
+    const allShelters = await Shelter.find();
     let isEligible = true; //check dieu kien gui yeu cau
     let reason = "Đủ điều kiện để tạo yêu cầu thành lập trạm cứu hộ"; //ly do
-    for (let i = 0; i < shelter.length; i++) {
-      if (["banned"].includes(shelter[i].status)) {
+    for (let i = 0; i < allShelters.length; i++) {
+      if (["banned"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn đã bị ban khỏi việc thành lập trạm cứu hộ!";
         isEligible = false;
         break;
       }
-      if (["active"].includes(shelter[i].status)) {
+      if (["active"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn đã thuộc về một trạm cứu hộ!";
         isEligible = false;
         break;
       }
-      if (["verifying"].includes(shelter[i].status)) {
+      if (["verifying"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn có yêu cầu đang chờ xử lý!";
+        isEligible = false;
+        break;
+      }
+      const hasPendingInvitation = allShelters[i].invitations.find(invitation => 
+        String(invitation.user) === String(userId) &&
+        invitation.status === "pending");
+      if(hasPendingInvitation){
+        reason = "Bạn đã có yêu cầu hoặc lời mời vào trạm cứu hộ khác!";
         isEligible = false;
         break;
       }
@@ -133,6 +146,7 @@ const sendShelterEstablishmentRequest = async (
 
     const isShelterCodeExist = await Shelter.findOne({
       shelterCode: shelterRequestData.shelterCode,
+      status: {$in: ["verifying", "active"]}
     });
     if (isShelterCodeExist) {
       throw new Error("Mã trạm đã tồn tại!");
@@ -140,6 +154,12 @@ const sendShelterEstablishmentRequest = async (
 
     const isNotEligible = await Shelter.findOne({
       "members._id": requesterId,
+      invitations: {
+        $elemMatch: {
+          user: requesterId,
+          status: "pending",
+        },
+      },
       status: { $in: ["active", "banned", "verifying"] },
     });
     if (isNotEligible) {
@@ -377,15 +397,13 @@ const findEligibleUsersToInvite = async (shelterId) => {
     // 3. Không có yêu cầu thành lập trạm cứu hộ nào
     const verifyingShelters = await Shelter.find({
       status: "verifying",
-    }).select("members");
-    const verifyingCreators = new Set(
-      verifyingShelters
-        .filter((s) => s.members?.length > 0)
-        .map((s) => s.members[0])
-    );
+    }).populate("members._id").select("members");
+    const formatedVerifyingUsers = verifyingShelters?.flatMap(shelter => shelter?.members.map(member => member._id));
     const eligibleUsers = notInAnyShelter.filter(
-      (user) => !verifyingCreators.has(user._id)
+      (user) => !formatedVerifyingUsers.find(item => String(item._id) === String(user._id))
     );
+    console.log("CurrentList: ", notInAnyShelter)
+    console.log("TO exclude: ", formatedVerifyingUsers)
 
     // 4. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
     const currentShelter = await Shelter.findById(shelterId).select(
@@ -728,7 +746,17 @@ const kickShelterMember = async (shelterId, userId) => {
 const requestIntoShelter = async (shelterEmail, senderId) => {
   try {
     const shelters = await Shelter.find({});
-    const isInShelter = shelters.find(shelter => shelter.members.find(member => String(member._id) === senderId) && shelter.status === "active")
+
+    const hasEstablishmentRequest = shelters.find(shelter => 
+      shelter.members.find(member => String(member._id) === senderId) && 
+      shelter.status === "verifying")
+    if (hasEstablishmentRequest) {
+      throw new Error("Bạn đang có yêu cầu thành lập trạm cứu hộ chờ xử lý");
+    }
+
+    const isInShelter = shelters.find(shelter => 
+      shelter.members.find(member => String(member._id) === senderId) && 
+      shelter.status === "active")
     if (isInShelter) {
       throw new Error("Bạn đã thuộc về một trạm cứu hộ rồi");
     }
