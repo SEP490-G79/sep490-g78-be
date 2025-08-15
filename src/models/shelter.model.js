@@ -11,7 +11,7 @@ const shelterSchema = new mongoose.Schema(
       type: String,
       required: [true, "Mã trạm cứu hộ là bắt buộc"],
       min: [3, "Mã trạm phải có ít nhất 3 kí tự"],
-      unique: true,
+      unique: [true, "Code của trạm cứu hộ bị trùng với code của trạm khác"],
     },
     bio: {
       type: String,
@@ -20,7 +20,7 @@ const shelterSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, "Email là bắt buộc"],
-      unique: true,
+      unique: [true, "Email của trạm cứu hộ bị trùng với email trạm khác"],
       match: [/^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$/, "Email không hợp lệ"],
     },
     hotline: {
@@ -34,7 +34,7 @@ const shelterSchema = new mongoose.Schema(
     },
     address: {
       type: String,
-      required: true,
+      required: [true, "Bắt buộc phải có địa chỉ của trạm cứu hộ"],
       trim: true,
     },
     location: {

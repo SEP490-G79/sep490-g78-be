@@ -188,30 +188,30 @@ const getRecommendedBlogs = async (req, res) => {
 
 
 //ADMIN
-const getAllBlogs = async (req, res) => {
-  try {
-    const blogs = await blogService.getAllBlogs();
-    res.status(200).json(blogs);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
-const moderateBlog = async (req, res) => {
-  try {
-    const response = await blogService.moderateBlog(req.params.blogId, req.params.decision);
-    res.status(200).json(response);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
-const getModeratingBlogs = async (req, res) => {
-  try {
-    const blogs = await blogService.getModeratingBlogs();
-    res.status(200).json(blogs);
-  } catch (error) {
-    res.status(400).json({ message: error.message });
-  }
-};
+// const getAllBlogs = async (req, res) => {
+//   try {
+//     const blogs = await blogService.getAllBlogs();
+//     res.status(200).json(blogs);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
+// const moderateBlog = async (req, res) => {
+//   try {
+//     const response = await blogService.moderateBlog(req.params.blogId, req.params.decision);
+//     res.status(200).json(response);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
+// const getModeratingBlogs = async (req, res) => {
+//   try {
+//     const blogs = await blogService.getModeratingBlogs();
+//     res.status(200).json(blogs);
+//   } catch (error) {
+//     res.status(400).json({ message: error.message });
+//   }
+// };
 
 
 const blogController = {
@@ -227,9 +227,9 @@ const blogController = {
     getRecommendedBlogs,
 
     //ADMIN
-    moderateBlog,
-    getModeratingBlogs,
-    getAllBlogs,
+    // moderateBlog,
+    // getModeratingBlogs,
+    // getAllBlogs,
 };
 
 module.exports = blogController;

@@ -26,7 +26,7 @@ shelterRouter.use(bodyParser.json());
 shelterRouter.post(
   "/send-shelter-request",
   verifyAccessToken,
-  cloudinary.upload.fields([{ name: "shelterLicense", maxCount: 1 }]),
+  cloudinary.upload.single("shelterLicense"),
   shelterController.sendShelterEstablishmentRequest
 );
 shelterRouter.put(
@@ -207,6 +207,7 @@ shelterRouter.put(
   [verifyAccessToken, isShelterManager],
   shelterController.changeShelterMemberRole
 );
+shelterRouter.put("/:shelterId/cancel-staff-request/:requestId",[verifyAccessToken] ,shelterController.cancelRequestIntoShelter);
 shelterRouter.use("/:shelterId/posts", postRouter);
 shelterRouter.use("/:shelterId/return-requests", returnRequestRouter);
 

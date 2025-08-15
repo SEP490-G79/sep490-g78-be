@@ -136,7 +136,7 @@ const logout = async (userId) => {
     await redisUtils.deleteRefreshToken(userId);
     return {
         status: 200,
-        message: "Thoát đăng nhập thành công!"
+        message: "Đăng xuất thành công!"
     };
 }
 

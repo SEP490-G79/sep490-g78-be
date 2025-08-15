@@ -68,22 +68,35 @@ const getShelterById = async (shelterId) => {
 
 const getShelterRequestByUserId = async (userId) => {
   try {
-    const shelter = await Shelter.find({ "members._id": userId });
+    
+    const shelter = await Shelter.find({ "members._id": userId }).sort({createdAt: -1});
+    const allShelters = await Shelter.find();
     let isEligible = true; //check dieu kien gui yeu cau
     let reason = "Đủ điều kiện để tạo yêu cầu thành lập trạm cứu hộ"; //ly do
-    for (let i = 0; i < shelter.length; i++) {
-      if (["banned"].includes(shelter[i].status)) {
+    for (let i = 0; i < allShelters.length; i++) {
+      if (["banned"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn đã bị ban khỏi việc thành lập trạm cứu hộ!";
         isEligible = false;
         break;
       }
-      if (["active"].includes(shelter[i].status)) {
+      if (["active"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn đã thuộc về một trạm cứu hộ!";
         isEligible = false;
         break;
       }
-      if (["verifying"].includes(shelter[i].status)) {
+      if (["verifying"].includes(allShelters[i].status) && 
+      allShelters[i].members.find(member => String(member._id) === String(userId))) {
         reason = "Bạn có yêu cầu đang chờ xử lý!";
+        isEligible = false;
+        break;
+      }
+      const hasPendingInvitation = allShelters[i].invitations.find(invitation => 
+        String(invitation.user) === String(userId) &&
+        invitation.status === "pending");
+      if(hasPendingInvitation){
+        reason = "Bạn đã có yêu cầu hoặc lời mời vào trạm cứu hộ khác!";
         isEligible = false;
         break;
       }
@@ -115,17 +128,25 @@ const getShelterRequestByUserId = async (userId) => {
 const sendShelterEstablishmentRequest = async (
   requesterId,
   shelterRequestData,
-  { shelterLicense }
+  shelterLicense
 ) => {
   try {
-    if (!shelterLicense[0]) {
+    if (!shelterLicense) {
       throw new Error(
         "Không tìm thấy giấy phép hoạt động! Vui lòng đính kèm giấy phép hoạt động"
       );
     }
 
+    const location = shelterRequestData?.location
+      ? JSON.parse(shelterRequestData?.location)
+      : "Chưa cung cấp tọa độ của địa chỉ";
+    if (location === "Chưa cung cấp tọa độ của địa chỉ") {
+      throw new Error("Chưa cung cấp tọa độ của địa chỉ!");
+    }
+
     const isShelterCodeExist = await Shelter.findOne({
       shelterCode: shelterRequestData.shelterCode,
+      status: {$in: ["verifying", "active"]}
     });
     if (isShelterCodeExist) {
       throw new Error("Mã trạm đã tồn tại!");
@@ -133,38 +154,31 @@ const sendShelterEstablishmentRequest = async (
 
     const isNotEligible = await Shelter.findOne({
       "members._id": requesterId,
+      invitations: {
+        $elemMatch: {
+          user: requesterId,
+          status: "pending",
+        },
+      },
       status: { $in: ["active", "banned", "verifying"] },
     });
     if (isNotEligible) {
-      // Xoa file o local
-      fs.unlink(shelterLicense[0].path, (err) => {
-        if (err) console.error("Lỗi xóa file ở local:", err);
-      });
       throw new Error("Tài khoản không đủ điều kiện để gửi yêu cầu!");
     }
 
-    const uploadResult = await cloudinary.uploader.upload(
-      shelterLicense[0].path,
-      {
-        folder: "shelter_licenses",
-        resource_type: "raw",
-      }
-    );
-    // Xoa file o local
-    fs.unlink(shelterLicense[0].path, (err) => {
-      if (err) console.error("Lỗi xóa file ở local:", err);
+    const uploadResult = await cloudinary.uploader.upload(shelterLicense.path, {
+      folder: "shelter_licenses",
+      resource_type: "auto",
     });
 
-    const shelter = await Shelter.create({
+    await Shelter.create({
       name: shelterRequestData.name,
       shelterCode: shelterRequestData.shelterCode,
       bio: "",
       email: shelterRequestData.email,
       hotline: shelterRequestData.hotline,
-      avatar: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884169/0265e65863c0d910bf1553816c432275_qfl6nk.jpg",
       address: shelterRequestData.address,
-      location: shelterRequestData.location,
-      background: "https://res.cloudinary.com/dpaht6o2y/image/upload/v1753884183/279dcca3f058ad75a2f3d256799c4634_zt7z3j.jpg",
+      location: location,
       members: [
         {
           _id: requesterId,
@@ -172,32 +186,32 @@ const sendShelterEstablishmentRequest = async (
         },
       ],
       shelterLicense: {
-        fileName: shelterLicense[0]?.originalname,
+        fileName: shelterLicense?.originalname,
         url: uploadResult?.secure_url,
-        size: shelterLicense[0]?.size,
-        mimeType: shelterLicense[0]?.mimetype,
+        size: shelterLicense?.size,
+        mimeType: shelterLicense?.mimetype,
         createAt: new Date(),
         updateAt: new Date(),
       },
       aspiration: shelterRequestData.aspiration,
-      foundationDate: new Date(), //tam thoi
-      status: "verifying",
-      warningCount: 0,
+      foundationDate: new Date(),
     });
 
     return {
       status: 200,
       message: "Gửi yêu cầu thành lập trạm cứu hộ thành công",
-      shelterRequest: shelter,
     };
   } catch (error) {
-    // Xoa file o local
-    fs.unlink(shelterLicense[0].path, (err) => {
-      if (err) console.error("Lỗi xóa file ở local:", err);
-    });
     throw error;
+  } finally {
+    if (shelterLicense?.path) {
+      fs.unlink(shelterLicense.path, (err) => {
+        if (err) console.error("Lỗi xóa file shelter license ở local:", err);
+      });
+    }
   }
 };
+
 const getShelterProfile = async (shelterId) => {
   try {
     const shelter = await Shelter.findById(shelterId);
@@ -383,15 +397,13 @@ const findEligibleUsersToInvite = async (shelterId) => {
     // 3. Không có yêu cầu thành lập trạm cứu hộ nào
     const verifyingShelters = await Shelter.find({
       status: "verifying",
-    }).select("members");
-    const verifyingCreators = new Set(
-      verifyingShelters
-        .filter((s) => s.members?.length > 0)
-        .map((s) => s.members[0])
-    );
+    }).populate("members._id").select("members");
+    const formatedVerifyingUsers = verifyingShelters?.flatMap(shelter => shelter?.members.map(member => member._id));
     const eligibleUsers = notInAnyShelter.filter(
-      (user) => !verifyingCreators.has(user._id)
+      (user) => !formatedVerifyingUsers.find(item => String(item._id) === String(user._id))
     );
+    console.log("CurrentList: ", notInAnyShelter)
+    console.log("TO exclude: ", formatedVerifyingUsers)
 
     // 4. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
     const currentShelter = await Shelter.findById(shelterId).select(
@@ -563,7 +575,8 @@ const getUserInvitationsAndRequests = async (userId) => {
     })
       .select("invitations") // chỉ lấy trường invitations để gọn
       .populate("invitations.shelter", "email name avatar")
-      .populate("invitations.user", "email fullName avatar");
+      .populate("invitations.user", "email fullName avatar")
+      .sort({createdAt: -1});
 
     const results = shelters.flatMap((shelter) =>
       shelter.invitations
@@ -732,6 +745,22 @@ const kickShelterMember = async (shelterId, userId) => {
 };
 const requestIntoShelter = async (shelterEmail, senderId) => {
   try {
+    const shelters = await Shelter.find({});
+
+    const hasEstablishmentRequest = shelters.find(shelter => 
+      shelter.members.find(member => String(member._id) === senderId) && 
+      shelter.status === "verifying")
+    if (hasEstablishmentRequest) {
+      throw new Error("Bạn đang có yêu cầu thành lập trạm cứu hộ chờ xử lý");
+    }
+
+    const isInShelter = shelters.find(shelter => 
+      shelter.members.find(member => String(member._id) === senderId) && 
+      shelter.status === "active")
+    if (isInShelter) {
+      throw new Error("Bạn đã thuộc về một trạm cứu hộ rồi");
+    }
+
     const shelter = await Shelter.findOne({ email: shelterEmail });
     if (!shelter) {
       throw new Error("Không tìm thấy shelter");
@@ -854,8 +883,31 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
         _id: request.user,
         roles: request.roles,
       });
-
       request.status = "accepted";
+
+
+      // Cancel các yêu cầu khác
+      await Shelter.updateMany(
+        {
+          _id: { $ne: shelterId },
+          "invitations.user": request.user,
+          "invitations.status": "pending",
+        },
+        {
+          $set: {
+            "invitations.$[elem].status": "cancelled",
+          },
+        },
+        {
+          arrayFilters: [
+            {
+              "elem.user": userId,
+              "elem.status": "pending",
+            },
+          ],
+        }
+      );
+
     } else if (decision === "reject") {
       request.status = "declined";
     } else {
@@ -975,6 +1027,29 @@ const changeShelterMemberRole = async (
   }
 };
 
+const cancelRequestIntoShelter = async (userId, shelterId, requestId) => {
+  try {
+    const shelter = await Shelter.findById(shelterId);
+    if(!shelter){
+      throw new Error("Trạm cứu hộ không tồn tại")
+    }
+    const request = shelter.invitations.find(invitation => invitation.type === "request" && String(invitation.id) === String(requestId));
+    if(!request){
+      throw new Error("Yêu cầu vào trạm cứu hộ không tồn tại")
+    }
+    if(String(request.user) !== String(userId)){
+      throw new Error("Chỉ có người tạo yêu cầu mới có quyền hủy yêu cầu")
+    }
+    request.status = "cancelled";
+    await shelter.save();
+    return {
+      message: "Hủy yêu cầu tình nguyện vào trạm cứu hộ thành công!"
+    }
+  } catch (error) {
+    throw(error)
+  }
+};
+
 // ADMIN
 const getAllShelter = async () => {
   try {
@@ -1010,7 +1085,7 @@ const getAllShelter = async () => {
 };
 const getAllShelterEstablishmentRequests = async () => {
   try {
-    const shelters = await Shelter.find({}).populate("members._id");
+    const shelters = await Shelter.find({}).populate("members._id").sort({createdAt: -1});
     return shelters.map((shelter, index) => {
       return {
         _id: shelter._id,
@@ -1402,6 +1477,7 @@ const shelterService = {
   getShelterMembersCount,
   getShelterPetGrowthByMonth,
   changeShelterMemberRole,
+  cancelRequestIntoShelter,
 
   //MANAGER
   getAdoptedPetsByWeek,
