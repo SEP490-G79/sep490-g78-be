@@ -20,7 +20,7 @@ class SocketService {
     this.io.engine.use((req, res, next) => {
         const isHandshakePhase = req._query.sid == undefined;
         if (isHandshakePhase) {
-          authMiddleware.verifyAccessToken(req,res,next);
+          authMiddleware.verifySocketAccessToken(req,res,next);
       } else {
         next()
       }

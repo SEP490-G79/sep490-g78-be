@@ -4,7 +4,7 @@ const utc = require("dayjs/plugin/utc");
 const timezone = require("dayjs/plugin/timezone");
 const notificationService = require("./notification.service");
 const { Types } = require("mongoose");
-
+const socketIoService = require("./socket-io.service");
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
@@ -69,14 +69,10 @@ const createAdoptionSubmission = async (data) => {
 
 // check user submission exist
 const checkUserSubmittedForm = async (userId, adoptionFormId) => {
-
   const existingSubmission = await db.AdoptionSubmission.findOne({
     performedBy: userId,
     adoptionForm: adoptionFormId,
   });
-
-
-
   return existingSubmission; // true nếu đã submit, false nếu chưa
 };
 
@@ -553,26 +549,39 @@ const updateInterviewPerformer = async ({
   // Gửi notifi cho nhân viên mới
   if (newPerformerId) {
     const contentNew = `Bạn đã được chỉ định phỏng vấn đơn nhận nuôi bé "${petName}".`;
-    await notificationService.createNotification(
+    const notification1 = await notificationService.createNotification(
       managerId,
       [newPerformerId],
       contentNew,
       "adoption",
       redirectUrl
     );
+    socketIoService.to(`user:${newPerformerId}`, "notification", notification1);
   }
 
   // Gửi notifi cho nhân viên cũ nếu khác nhân viên mới
   if (oldPerformerId && oldPerformerId !== newPerformerId.toString()) {
     const contentOld = `Bạn không còn là người thực hiện phỏng vấn đơn nhận nuôi bé "${petName}".`;
-    await notificationService.createNotification(
+    const notification2 = await notificationService.createNotification(
       managerId,
       [oldPerformerId],
       contentOld,
       "adoption",
       redirectUrl_V2
     );
+    socketIoService.to(`user:${oldPerformerId}`, "notification", notification2);
   }
+  socketIoService.to(
+  `shelter:${shelter._id}`,
+  "adoptionSubmission:assigneeChanged",
+  {
+    submissionId: submissionId.toString(),
+    petId: pet._id.toString(),
+    oldPerformerId: oldPerformerId,
+    newPerformerId: newPerformerId,
+  }
+);
+
   return { success: true };
 };
 
