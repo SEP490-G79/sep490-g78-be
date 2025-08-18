@@ -501,7 +501,7 @@ const updateSubmissionStatus = async (req, res) => {
       //   socketIoService.to(`user:${user._id.toString()}`, "notification", notif);
       // }
 
-      // Notification cho NHÂN VIÊN PHỎNG VẤN nếu có
+      // Notification cho NHÂN VIÊN PHỎNG VẤN
 
       const assignedId =
         submission?.interview?.performedBy?._id?.toString() ??
@@ -539,20 +539,49 @@ const updateSubmissionStatus = async (req, res) => {
         );
       }
 
-      if (status === "rejected" && user?.email) {
-        const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
-        const body = `
-          <div style="font-family: Arial, sans-serif; line-height: 1.5;">
-            <h2>Thông báo từ chối đơn nhận nuôi</h2>
-            <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
-            <p>Đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
-            <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục đồng hành cùng các bé khác trong tương lai.</p>
-            <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
-          </div>`;
-        mailer.sendEmail(user.email, subject, body).catch(err =>
-          console.error("Lỗi gửi email từ chối nhận nuôi:", err)
-        );
+      if (status === "rejected") {
+  // Notification cho user
+  if (user?._id) {
+    const redirectUrlUser = `/adoption-form/${petId}`; 
+    const contentUser =
+      `Đơn nhận nuôi "${petName}" của bạn đã bị từ chối.`;
+    const notifUser = await notificationService.createNotification(
+      reviewedBy,           
+      [user._id],          
+      contentUser,
+      "adoption",
+      redirectUrlUser
+    );
+
+    socketIoService.to(`user:${user._id.toString()}`, "notification", notifUser);
+    socketIoService.to(
+      `user:${user._id.toString()}`,
+      "adoptionSubmission:statusChanged",
+      {
+        submissionId: submissionId.toString(),
+        petId: petId?.toString(),
+        status: "rejected",
       }
+    );
+  }
+
+  if (user?.email) {
+    const subject = `Thông báo kết quả đơn nhận nuôi ${petName}`;
+    const body = `
+      <div style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h2>Thông báo từ chối đơn nhận nuôi</h2>
+        <p>Xin chào <strong>${user.fullName || "bạn"}</strong>,</p>
+        <p>Đơn đăng ký nhận nuôi bé <strong>${petName}</strong> của bạn đã không được <strong>${shelterName}</strong> chấp nhận.</p>
+        <p>Cảm ơn bạn đã quan tâm và hi vọng bạn sẽ tiếp tục đồng hành cùng các bé khác trong tương lai.</p>
+        <p style="margin-top: 20px;">Trân trọng,<br>${shelterName}</p>
+      </div>`;
+    mailer.sendEmail(user.email, subject, body).catch(err =>
+      console.error("Lỗi gửi email từ chối nhận nuôi:", err)
+    );
+  }
+}
+
+
     } catch (sideErr) {
       console.error("Lỗi gửi notification/socket sau khi update status:", sideErr);
     }
@@ -619,6 +648,7 @@ const createInterviewSchedule = async (req, res) => {
           {
             submissionId: submissionId.toString(),
             petId: pet?._id?.toString(),
+            status: "interviewing",
           }
         );
       }

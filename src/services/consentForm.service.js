@@ -455,13 +455,18 @@ const changeFormStatusShelter = async (consentFormId, status) => {
           throw new Error("Không tìm thấy đơn nhận nuôi nào.");
         }
 
-        const otherAdopterIds = submissionsRaw
-          .filter(
-            (submission) =>
-              String(submission?.performedBy?._id) !=
-              String(updatedConsentForm?.adopter?._id)
+        const otherSubs = submissionsRaw
+          .filter((submission) =>
+            String(submission?.performedBy?._id ?? submission?.performedBy) !==
+            String(updatedConsentForm?.adopter?._id)
           )
-          .map((submission) => submission?.performedBy?._id);
+          .map((submission) => ({
+            submissionId: submission._id.toString(),
+            userId: (submission?.performedBy?._id ?? submission?.performedBy).toString(),
+            selectedSchedule: Boolean(submission?.interview?.selectedSchedule),
+          }));
+
+        const otherAdopterIds = otherSubs.map(s => s.userId);
 
         const updatedPet = await db.Pet.findOneAndUpdate(
           { _id: updatedConsentForm?.pet?._id },
@@ -485,13 +490,32 @@ const changeFormStatusShelter = async (consentFormId, status) => {
               otherAdopterIds,
               updatedConsentForm?.pet?._id
             );
-          await notificationService.createNotification(
+          const notifOthers = await notificationService.createNotification(
             updatedConsentForm.createdBy._id,
             otherAdopterIds,
             `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
             "adoption",
             `/pet/${updatedConsentForm.pet._id}`
           );
+          try {
+            for (const { userId, submissionId, selectedSchedule } of otherSubs) {
+              socketIoService.to(`user:${userId}`, "notification", notifOthers);
+
+              socketIoService.to(
+                `user:${userId}`,
+                "adoptionSubmission:statusChanged",
+                {
+                  submissionId,
+                  petId: updatedConsentForm.pet._id.toString(),
+                  status: "rejected",
+                  selectedSchedule,
+                }
+              );
+            }
+
+          } catch (emitErr) {
+            console.error("Emit adoptionSubmission:statusChanged (others) failed:", emitErr);
+          }
 
           if (!updatedSubmissions) {
             await db.Pet.findByIdAndUpdate(updatedConsentForm.pet._id, {
@@ -542,7 +566,7 @@ const changeFormStatusShelter = async (consentFormId, status) => {
             {
               consentFormId: updatedConsentForm._id.toString(),
               petId: updatedConsentForm.pet._id.toString(),
-              status: "send",
+              status: "approved",
             }
 
           );
@@ -634,15 +658,15 @@ const changeFormStatusUser = async (consentFormId, status, note, userId) => {
           updatedConsentForm?.pet?._id
         );
 
-      const cancelledNoti =  await notificationService.createNotification(
+        const cancelledNoti = await notificationService.createNotification(
           updatedConsentForm.createdBy._id,
           [...shelterMembers],
           `Người nhận nuôi bạn ${updatedConsentForm.pet.name} đã hủy yêu cầu nhận nuôi!`,
           "adoption",
           `/shelters/${consentForm?.shelter?._id}/management/consent-forms/${updatedConsentForm?._id}`
         );
-         socketIoService.to(`shelter:${updatedConsentForm.shelter._id}`, `notification`, cancelledNoti)
-        
+        socketIoService.to(`shelter:${updatedConsentForm.shelter._id}`, `notification`, cancelledNoti)
+
       } catch (err) {
         await db.ConsentForm.findByIdAndUpdate(consentFormId, {
           status: oldStatus,
@@ -672,17 +696,17 @@ const changeFormStatusUser = async (consentFormId, status, note, userId) => {
       );
       socketIoService.to(`shelter:${updatedConsentForm.shelter._id}`, `notification`, rejectedNoti)
     }
-    
+
     try {
       socketIoService.to(
-  `user:${updatedConsentForm.adopter._id}`,
-  "consentForm:statusChanged",
-  {
-    consentFormId: updatedConsentForm._id.toString(),
-    petId: updatedConsentForm.pet._id.toString(),
-    status, // accepted | rejected | cancelled
-  }
-);
+        `user:${updatedConsentForm.adopter._id}`,
+        "consentForm:statusChanged",
+        {
+          consentFormId: updatedConsentForm._id.toString(),
+          petId: updatedConsentForm.pet._id.toString(),
+          status, // accepted | rejected | cancelled
+        }
+      );
       socketIoService.to(
         `shelter:${updatedConsentForm.shelter._id}`,
         "consentForm:statusChanged",
