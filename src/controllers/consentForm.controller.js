@@ -69,7 +69,7 @@ async function createForm(req, res, next) {
     adopterId,
   } = req.body;
 
-  const attachments = req.files ||[];
+  const attachments = req.files || [];
 
   if (attachments.length > 2) {
     return res.status(400).json({
@@ -151,27 +151,80 @@ async function createForm(req, res, next) {
   }
 }
 
+// async function editForm(req, res, next) {
+//   const { consentFormId } = req.params;
+//   const { title, commitments, tokenMoney, deliveryMethod, note, address } = req.body;
+//   const attachments = req.files ||[];
+
+//   if (attachments.length > 2) {
+//     return res.status(400).json({
+//       message: "Không thể tải lên quá 2 tệp đính kèm.",
+//     });
+//   }
+
+//   if (!title || !commitments || commitments.trim() == "" || deliveryMethod == "" || !address) {
+//     return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin" });
+//   }
+
+//   if (deliveryMethod.toLowerCase() != "pickup" && deliveryMethod.toLowerCase() != "delivery") {
+//     return res
+//       .status(400)
+//       .json({ message: "Phương thức giao hàng không hợp lệ" });
+//   }
+
+//   try {
+//     const updatedConsentForm = await consentFormService.editForm(
+//       consentFormId,
+//       {
+//         title,
+//         commitments,
+//         tokenMoney,
+//         deliveryMethod,
+//         note,
+//         attachments,
+//         address,
+//       }
+//     );
+//     res.status(200).json(updatedConsentForm);
+//   } catch (error) {
+//     if (req.files?.length) {
+//       await Promise.allSettled(
+//         req.files.map((file) => fs.unlink(file.path).catch(() => {}))
+//       );
+//     }
+//     res.status(400).json({ message: error.message });
+//   }
+// }
 async function editForm(req, res, next) {
   const { consentFormId } = req.params;
-  const { title, commitments, tokenMoney, deliveryMethod, note, address } = req.body;
-  const attachments = req.files ||[];
+  const { title, commitments, tokenMoney, deliveryMethod, note, address } =
+    req.body;
+  // const attachments = req.files ||[];
 
-  if (attachments.length > 2) {
-    return res.status(400).json({
-      message: "Không thể tải lên quá 2 tệp đính kèm.",
-    });
-  }
+  // if (attachments.length > 2) {
+  //   return res.status(400).json({
+  //     message: "Không thể tải lên quá 2 tệp đính kèm.",
+  //   });
+  // }
 
-  if (!title || !commitments || commitments.trim() == "" || deliveryMethod == "" || !address) {
+  if (
+    !title ||
+    !commitments ||
+    commitments.trim() == "" ||
+    deliveryMethod == "" ||
+    !address
+  ) {
     return res.status(400).json({ message: "Vui lòng điền đầy đủ thông tin" });
   }
 
-  if (deliveryMethod.toLowerCase() != "pickup" && deliveryMethod.toLowerCase() != "delivery") {
+  if (
+    deliveryMethod.toLowerCase() != "pickup" &&
+    deliveryMethod.toLowerCase() != "delivery"
+  ) {
     return res
       .status(400)
       .json({ message: "Phương thức giao hàng không hợp lệ" });
   }
-  
 
   try {
     const updatedConsentForm = await consentFormService.editForm(
@@ -182,8 +235,30 @@ async function editForm(req, res, next) {
         tokenMoney,
         deliveryMethod,
         note,
-        attachments,
         address,
+      }
+    );
+    res.status(200).json(updatedConsentForm);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+}
+
+async function uploadConsent(req, res, next) {
+  const { consentFormId } = req.params;
+  const attachments = req.files || [];
+
+  if (attachments.length > 1) {
+    return res.status(400).json({
+      message: "Không thể tải lên quá 1 tệp đính kèm.",
+    });
+  }
+
+  try {
+    const updatedConsentForm = await consentFormService.uploadConsent(
+      consentFormId,
+      {
+        attachments,
       }
     );
     res.status(200).json(updatedConsentForm);
@@ -193,6 +268,25 @@ async function editForm(req, res, next) {
         req.files.map((file) => fs.unlink(file.path).catch(() => {}))
       );
     }
+    res.status(400).json({ message: error.message });
+  }
+}
+
+async function deleteFile(req, res, next) {
+  const { consentFormId } = req.params;
+  const { fileId } = req.body;
+  if(!fileId){
+    return res.status(400).json({
+      message: "Không tìm thấy file",
+    });
+  }
+  try {
+    const updatedConsentForm = await consentFormService.deleteFile(
+      consentFormId,
+      fileId
+    );
+    res.status(200).json(updatedConsentForm);
+  } catch (error) {
     res.status(400).json({ message: error.message });
   }
 }
@@ -216,14 +310,10 @@ async function changeFormStatusShelter(req, res, next) {
   }
 }
 
-
 async function changeFormStatusUser(req, res, next) {
   const { consentFormId } = req.params;
   const { id } = req.payload;
   const { status, note } = req.body;
-
-  
-  
 
   if (!["accepted", "cancelled", "rejected"].includes(status)) {
     return res.status(400).json({ message: "Trạng thái không hợp lệ" });
@@ -261,6 +351,8 @@ const consentFormController = {
   getById,
   createForm,
   editForm,
+  deleteFile,
+  uploadConsent,
   changeFormStatusShelter,
   changeFormStatusUser,
   deleteForm,

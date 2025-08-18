@@ -19,6 +19,7 @@ const { consentFormController } = require("../controllers");
 const authMiddleware = require("../middlewares/auth.middleware");
 const shelterMiddleware = require("../middlewares/shelter.middleware");
 const cloudinary = require("../configs/cloudinary");
+const fileMiddleware = require("../middlewares/file.middleware");
 
 shelterRouter.use(bodyParser.json());
 
@@ -258,17 +259,45 @@ shelterRouter.put(
     authMiddleware.verifyAccessToken,
     authMiddleware.isActive,
     shelterMiddleware.isShelterMember,
-    cloudinary.upload.array("attachments", 2),
+    cloudinary.upload.array("attachments", 1),
     (err, req, res, next) => {
       if (err?.code == "LIMIT_UNEXPECTED_FILE") {
         return res
           .status(400)
-          .json({ message: "Tối đa 2 ảnh được phép đăng." });
+          .json({ message: "Tối đa 1 ảnh được phép đăng." });
       }
       next();
     },
   ],
   consentFormController.editForm
+);
+shelterRouter.put(
+  "/:shelterId/consentForms/:consentFormId/uploadConsent",
+  [
+    authMiddleware.verifyAccessToken,
+    authMiddleware.isActive,
+    shelterMiddleware.isShelterMember,
+    cloudinary.upload.array("attachments", 1),
+    (err, req, res, next) => {
+      if (err?.code == "LIMIT_UNEXPECTED_FILE") {
+        return res
+          .status(400)
+          .json({ message: "Tối đa 1 ảnh được phép đăng." });
+      }
+      next();
+    },
+    fileMiddleware.checkImageSize
+  ],
+  consentFormController.uploadConsent
+);
+shelterRouter.put(
+  "/:shelterId/consentForms/:consentFormId/deleteFile",
+  [
+    authMiddleware.verifyAccessToken,
+    authMiddleware.isActive,
+    shelterMiddleware.isShelterMember,
+  ],
+  consentFormController.deleteFile
 );
 shelterRouter.put(
   "/:shelterId/consentForms/:consentFormId/change-status-shelter",

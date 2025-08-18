@@ -137,7 +137,127 @@ const createForm = async (consentForm) => {
   }
 };
 
+// const editForm = async (consentFormId, updateForm) => {
+//   try {
+//     const consentForm = await db.ConsentForm.findById(consentFormId)
+//       .populate("shelter", "_id name address avatar status")
+//       .populate("adopter", "_id fullName avatar phoneNumber address status")
+//       .populate(
+//         "pet",
+//         "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+//       )
+//       .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+//     if (!consentForm) {
+//       throw new Error("Không tìm thấy bản đồng ý với ID đã cho.");
+//     }
+//     if (consentForm.status != "draft") {
+//       throw new Error(
+//         "Chỉ có thể chỉnh sửa bản đồng ý nhận nuôi trong trạng thái nháp."
+//       );
+//     }
+//     const attachmentsRaw = updateForm.attachments;
+
+//     const attachments = [];
+
+//     if (attachmentsRaw && attachmentsRaw.length > 0) {
+//       for (const attachment of attachmentsRaw) {
+//         const { originalname, path, size, mimetype } = attachment;
+//         try {
+//           const uploadedPhoto = await cloudinary.uploader.upload(path, {
+//             folder: "consentForms",
+//             resource_type: "auto",
+//           });
+//           if (!uploadedPhoto) {
+//             throw Error("Lỗi khi upload tệp đính kèm!");
+//           }
+//           attachments.push({
+//             fileName: originalname,
+//             url: uploadedPhoto.secure_url,
+//             size: size || 0,
+//             mimeType: mimetype || "application/octet-stream",
+//           });
+
+//           await fs.unlink(attachment.path);
+//         } catch (error) {
+//           throw error;
+//         }
+//       }
+//     }
+
+//     const updatedConsentForm = await db.ConsentForm.findByIdAndUpdate(
+//       consentFormId,
+//       {
+//         ...updateForm,
+//         attachments: attachments,
+//       },
+//       { new: true }
+//     )
+//       .populate("shelter", "_id name address avatar status")
+//       .populate("adopter", "_id fullName avatar phoneNumber address status")
+//       .populate(
+//         "pet",
+//         "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+//       )
+//       .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+//     if (!updatedConsentForm) {
+//       throw new Error(
+//         "Lỗi khi cập nhật bản đồng ý nhận nuôi. Vui lòng thử lại sau."
+//       );
+//     }
+//     return updatedConsentForm;
+//   } catch (error) {
+//     throw error;
+//   }
+// };
+
 const editForm = async (consentFormId, updateForm) => {
+  try {
+    const consentForm = await db.ConsentForm.findById(consentFormId)
+      .populate("shelter", "_id name address avatar status")
+      .populate("adopter", "_id fullName avatar phoneNumber address status")
+      .populate(
+        "pet",
+        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+      )
+      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+    if (!consentForm) {
+      throw new Error("Không tìm thấy bản đồng ý với ID đã cho.");
+    }
+    if (consentForm.status != "draft") {
+      throw new Error(
+        "Chỉ có thể chỉnh sửa bản đồng ý nhận nuôi trong trạng thái nháp."
+      );
+    }
+    
+    const updatedConsentForm = await db.ConsentForm.findByIdAndUpdate(
+      consentFormId,
+      {
+        ...updateForm
+      },
+      { new: true }
+    )
+      .populate("shelter", "_id name address avatar status")
+      .populate("adopter", "_id fullName avatar phoneNumber address status")
+      .populate(
+        "pet",
+        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+      )
+      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+    if (!updatedConsentForm) {
+      throw new Error(
+        "Lỗi khi cập nhật bản đồng ý nhận nuôi. Vui lòng thử lại sau."
+      );
+    }
+    return updatedConsentForm;
+  } catch (error) {
+    throw error;
+  }
+};
+const uploadConsent = async (consentFormId, updateForm) => {
   try {
     const consentForm = await db.ConsentForm.findById(consentFormId)
       .populate("shelter", "_id name address avatar status")
@@ -188,7 +308,54 @@ const editForm = async (consentFormId, updateForm) => {
     const updatedConsentForm = await db.ConsentForm.findByIdAndUpdate(
       consentFormId,
       {
-        ...updateForm,
+        attachments: attachments,
+      },
+      { new: true }
+    )
+      .populate("shelter", "_id name address avatar status")
+      .populate("adopter", "_id fullName avatar phoneNumber address status")
+      .populate(
+        "pet",
+        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+      )
+      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+    if (!updatedConsentForm) {
+      throw new Error(
+        "Lỗi khi cập nhật bản đồng ý nhận nuôi. Vui lòng thử lại sau."
+      );
+    }
+    return updatedConsentForm;
+  } catch (error) {
+    throw error;
+  }
+};
+
+const deleteFile = async (consentFormId, fileId) => {
+  try {
+    const consentForm = await db.ConsentForm.findById(consentFormId)
+      .populate("shelter", "_id name address avatar status")
+      .populate("adopter", "_id fullName avatar phoneNumber address status")
+      .populate(
+        "pet",
+        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+      )
+      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+    if (!consentForm) {
+      throw new Error("Không tìm thấy bản đồng ý với ID đã cho.");
+    }
+    if (consentForm.status != "draft") {
+      throw new Error(
+        "Chỉ có thể chỉnh sửa bản đồng ý nhận nuôi trong trạng thái nháp."
+      );
+    }
+    
+    const attachments = consentForm.attachments.filter((f)=>f._id!= fileId)
+
+    const updatedConsentForm = await db.ConsentForm.findByIdAndUpdate(
+      consentFormId,
+      {
         attachments: attachments,
       },
       { new: true }
@@ -562,6 +729,8 @@ const consentFormService = {
   getById,
   createForm,
   editForm,
+  deleteFile,
+  uploadConsent,
   changeFormStatusShelter,
   changeFormStatusUser,
   deleteForm,
