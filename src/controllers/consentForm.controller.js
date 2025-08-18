@@ -222,8 +222,6 @@ async function changeFormStatusUser(req, res, next) {
   const { id } = req.payload;
   const { status, note } = req.body;
 
-  
-  
 
   if (!["accepted", "cancelled", "rejected"].includes(status)) {
     return res.status(400).json({ message: "Trạng thái không hợp lệ" });
