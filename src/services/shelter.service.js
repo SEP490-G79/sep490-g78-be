@@ -348,19 +348,7 @@ const getShelterMembers = async (shelterId) => {
       };
     };
 
-    // const shelterMember = shelter.members.map(member => {
-    //   return {
-    //     avatar: member._id.name,
-    //     fullName: string;
-    //     email: string;
-    //     roles: [string];
-    //     status: string;
-    //     createdAt: Date;
-    //     updatedAt:
-    //   }
-    // })
     const formattedUsers = shelter.members.map(formatUserOutput);
-    // console.log(formattedUsers)
     return formattedUsers;
   } catch (error) {
     throw error;
@@ -376,13 +364,13 @@ const findEligibleUsersToInvite = async (shelterId) => {
     const notCurrentMembers = await User.find({
       _id: { $nin: currentMemberIds },
     });
-    // console.log(notCurrentMembers)
+ 
 
     // 2. Tài khoản đã kích hoạt
     const activatedAccount = notCurrentMembers.filter(
       (user) => user.status === "active"
     );
-    // console.log(activatedAccount);
+
 
     // 3. Không là thành viên của trạm cứu hộ nào khác
     const allShelterMembers = await Shelter.find({ status: "active" }).select(
@@ -392,7 +380,7 @@ const findEligibleUsersToInvite = async (shelterId) => {
     const notInAnyShelter = activatedAccount.filter(
       (user) => !memberIdSet.has(user._id)
     );
-    // console.log(notInAnyShelter);
+
 
     // 3. Không có yêu cầu thành lập trạm cứu hộ nào
     const verifyingShelters = await Shelter.find({
@@ -402,8 +390,6 @@ const findEligibleUsersToInvite = async (shelterId) => {
     const eligibleUsers = notInAnyShelter.filter(
       (user) => !formatedVerifyingUsers.find(item => String(item._id) === String(user._id))
     );
-    console.log("CurrentList: ", notInAnyShelter)
-    console.log("TO exclude: ", formatedVerifyingUsers)
 
     // 4. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
     const currentShelter = await Shelter.findById(shelterId).select(
@@ -419,7 +405,6 @@ const findEligibleUsersToInvite = async (shelterId) => {
       (user) => !pendingReceivers.has(user._id.toString())
     );
 
-    // console.log(eligibleUsers);
     return finalEligibleUsers.map((user) => {
       return {
         email: user.email,
@@ -536,7 +521,6 @@ const getShelterInvitationsAndRequests = async (shelterId) => {
     if (!shelter) {
       throw new Error("Không tìm thấy shelter");
     }
-    console.log(shelter);
 
     // Mapping dữ liệu đúng interface
     const formatted = shelter.invitations.map((invitation) => ({
@@ -635,7 +619,6 @@ const reviewShelterInvitationRequest = async (shelterId, userId, decision) => {
       );
     });
 
-    // console.log(currInvitation)
     if (!currInvitation) {
       throw new Error("Không tìm thấy lời mời phù hợp");
     }
@@ -851,7 +834,6 @@ const getEligibleShelters = async (userId) => {
 // xu ly yeu cau vao shelter cua manager
 const reviewShelterRequest = async (shelterId, requestId, decision) => {
   try {
-    // console.log(shelterId, requestId, decision)
     const shelter = await Shelter.findById(shelterId);
     if (!shelter) {
       throw new Error("Không tìm thấy shelter");
