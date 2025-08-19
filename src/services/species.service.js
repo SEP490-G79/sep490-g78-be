@@ -1,4 +1,4 @@
-const {Species, Breed, Pet, Shelter} = require("../models");
+const {Species, Breed, Pet, Shelter, AdoptionTemplate} = require("../models");
 const {createNotification} = require("./notification.service")
 
 async function sendNotificationToAllShelter(senderId, message){
@@ -71,13 +71,18 @@ const deleteSpecies = async (adminId, speciesId) => {
       throw new Error("Id của loài không hợp lệ!");
     }
 
+    const adoptionTemplateCountsBySpecies = await AdoptionTemplate.countDocuments({species: speciesId});
+    if(adoptionTemplateCountsBySpecies > 0){
+      throw new Error(`Không thể xóa loài vì có ${adoptionTemplateCountsBySpecies} mẫu form nhận nuôi đang sử dụng loài này!`);
+    }
+
     const petCountsBySpecies = await Pet.countDocuments({species: speciesId})
     if(petCountsBySpecies > 0){
-      throw new Error(`Không thể xóa loài vì đang có ${petCountsBySpecies} thú cưng đang sử dụng loài này!`);
+      throw new Error(`Không thể xóa loài vì có ${petCountsBySpecies} thú cưng đang sử dụng loài này!`);
     }
     const breedCountsBySpecies = await Breed.countDocuments({species: speciesId})
     if(breedCountsBySpecies > 0){
-      throw new Error(`Không thể xóa loài vì đang có ${breedCountsBySpecies} giống đang sử dụng loài này!`);
+      throw new Error(`Không thể xóa loài vì có ${breedCountsBySpecies} giống đang sử dụng loài này!`);
     }
     
     // Xoá species

@@ -28,6 +28,7 @@ const reportSchema = new mongoose.Schema(
     reason: {
       type: String,
       required: true,
+      max: [500, "Lý do không được dài hơn 500 ký tự"],
       trim: true,
     },
     photos: [{
