@@ -3,6 +3,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const MongoStore = require('connect-mongo');
 
 require("dotenv").config({
   path: `.env.${process.env.NODE_ENV || "development"}`,
@@ -61,13 +62,17 @@ app.use(cookieParser());
 // passport oauth
 app.use(
   session({
-    secret: "pawShelterGoogleLogin",
+    secret: process.env.SESSION_SECRET || "pawShelterBESystemSession123987",
     resave: false,
     saveUninitialized: false,
-      cookie: {
-    secure: process.env.NODE_ENV === "production", // true khi production
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // cần thiết nếu frontend và backend khác domain
-  }
+    store: process.env.NODE_ENV === "production" ?  MongoStore.create({
+      mongoUrl: process.env.MONGODB_URI,
+      ttl: 7 * 24 * 60 * 60,  // Session 7 ngày
+    }) : undefined,
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true khi production
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax", // cần thiết nếu frontend và backend khác domain
+    }
   })
 );
 app.use(passport.initialize());

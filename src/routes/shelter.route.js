@@ -208,6 +208,11 @@ shelterRouter.put(
   [verifyAccessToken, isShelterManager],
   shelterController.changeShelterMemberRole
 );
+shelterRouter.put(
+  "/:shelterId/cancel-invitation/:invitationId",
+  [verifyAccessToken, isShelterStaff],
+  shelterController.cancelShelterInvitationById
+);
 shelterRouter.put("/:shelterId/cancel-staff-request/:requestId",[verifyAccessToken] ,shelterController.cancelRequestIntoShelter);
 shelterRouter.use("/:shelterId/posts", postRouter);
 shelterRouter.use("/:shelterId/return-requests", returnRequestRouter);

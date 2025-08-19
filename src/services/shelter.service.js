@@ -561,7 +561,7 @@ const getShelterInvitationsAndRequests = async (shelterId) => {
       expireAt: invitation.expireAt,
     }));
 
-    return formatted;
+    return formatted.sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
     throw error;
   }
@@ -575,8 +575,7 @@ const getUserInvitationsAndRequests = async (userId) => {
     })
       .select("invitations") // chỉ lấy trường invitations để gọn
       .populate("invitations.shelter", "email name avatar")
-      .populate("invitations.user", "email fullName avatar")
-      .sort({createdAt: -1});
+      .populate("invitations.user", "email fullName avatar");
 
     const results = shelters.flatMap((shelter) =>
       shelter.invitations
@@ -608,7 +607,7 @@ const getUserInvitationsAndRequests = async (userId) => {
         }))
     );
 
-    return results;
+    return results.sort((a, b) => b.createdAt - a.createdAt);
   } catch (error) {
     console.error("Error in getUserInvitationsAndRequests:", error);
     throw error;
@@ -1049,6 +1048,35 @@ const cancelRequestIntoShelter = async (userId, shelterId, requestId) => {
     throw(error)
   }
 };
+const cancelShelterInvitationById = async (userId, shelterId, invitationId) => {
+  try {
+    const shelter = await Shelter.findById(shelterId);
+    if(!shelter){
+      throw new Error("Trạm cứu hộ không tồn tại")
+    }
+    const invitation = shelter.invitations.find(invitation => invitation.type === "invitation" && String(invitation.id) === String(invitationId));
+    if(!invitation){
+      throw new Error("Lời mời vào trạm cứu hộ không tồn tại")
+    }
+
+    const isStaffOfShelter = shelter.members.find(member => String(member.id) === String(userId));
+    if(!isStaffOfShelter){
+      throw new Error("Chỉ có thành viên thuộc trạm cứu hộ gửi lời mời mới có quyền hủy lời mời")
+    }
+
+    if(invitation.status !== "pending"){
+      throw new Error("Chỉ có thể hủy lời mời trong trạng thái chờ")
+    }
+
+    invitation.status = "cancelled";
+    await shelter.save();
+    return {
+      message: "Hủy lời mời vào trạm cứu hộ thành công!"
+    }
+  } catch (error) {
+    throw(error)
+  }
+};
 
 // ADMIN
 const getAllShelter = async () => {
@@ -1452,6 +1480,8 @@ const getAdoptionSubmissionsByWeek = async (shelterId) => {
 
   return result;
 };
+
+
 const shelterService = {
   // USER
   getAll,
@@ -1478,6 +1508,7 @@ const shelterService = {
   getShelterPetGrowthByMonth,
   changeShelterMemberRole,
   cancelRequestIntoShelter,
+  cancelShelterInvitationById,
 
   //MANAGER
   getAdoptedPetsByWeek,

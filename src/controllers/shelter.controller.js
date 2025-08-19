@@ -243,12 +243,24 @@ const changeShelterMemberRole = async (req, res) => {
 };
 const cancelRequestIntoShelter = async (req, res) => {
   try {
-    const updatedData = await shelterService.cancelRequestIntoShelter(
+    const response = await shelterService.cancelRequestIntoShelter(
       req.payload.id,
       req.params.shelterId,
       req.params.requestId
     );
-    res.status(200).json(updatedData);
+    res.status(200).json(response);
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+const cancelShelterInvitationById = async (req, res) => {
+  try {
+    const response = await shelterService.cancelShelterInvitationById(
+      req.payload.id,
+      req.params.shelterId,
+      req.params.invitationId
+    );
+    res.status(200).json(response);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -362,6 +374,7 @@ const shelterController = {
   getShelterDashboardStatistics,
   changeShelterMemberRole,
   cancelRequestIntoShelter,
+  cancelShelterInvitationById,
 
   //MANAGER
   getAdoptedPetsByWeek,
