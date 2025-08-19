@@ -44,10 +44,6 @@ const getListBlogs = async () => {
       .populate("shelter createdBy")
       .sort({ createdAt: -1 });
 
-    if (!blogs || blogs.length === 0) {
-      throw new Error("Không có bài viết nào");
-    }
-
     const result = blogs.filter((blog) => {
       if (blog.shelter.status === "active") {
         return {
@@ -148,9 +144,6 @@ const getListBlogsByShelter = async (shelterId) => {
     })
       .populate("shelter createdBy")
       .sort({ createdAt: -1 });
-    if (!blogs || blogs.length === 0) {
-      throw new Error("Không có bài viết nào của trạm cứu hộ này");
-    }
 
     const result = blogs.map((blog) => ({
       _id: blog._id,
