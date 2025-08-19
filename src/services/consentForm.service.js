@@ -690,7 +690,7 @@ const changeFormStatusUser = async (consentFormId, status, note, userId) => {
       const rejectedNoti = await notificationService.createNotification(
         updatedConsentForm.createdBy._id,
         [...shelterMembers],
-        `Người nhận nuôi bạn ${updatedConsentForm.pet.name} đã từ chối bản đồng ý nhận nuôi! Liên hệ người nhận nuôi để sửa lại các thông tin cần thiết!`,
+        `Người nhận nuôi bạn ${updatedConsentForm.pet.name} yêu cầu chỉnh sửa lại thông tin bản cam kết! Liên hệ người nhận nuôi để sửa lại các thông tin cần thiết!`,
         "adoption",
         `/shelters/${consentForm?.shelter?._id}/management/consent-forms/${updatedConsentForm?._id}`
       );
