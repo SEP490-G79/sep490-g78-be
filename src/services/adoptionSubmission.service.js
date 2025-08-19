@@ -96,7 +96,8 @@ const getAdoptionSubmissionById = async (id) => {
           },
         ],
       })
-      .populate("answers.questionId");
+      .populate("answers.questionId")
+      .populate("interview.performedBy", "fullName email avatar");
 
     if (!adoptionSubmission) {
       throw new Error("Không tìm thấy submission");

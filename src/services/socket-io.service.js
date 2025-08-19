@@ -45,7 +45,7 @@ class SocketService {
       
 
       socket.join(`user:${id}`);
-      console.log("joined room:", `user:${id}`, socket.id);
+      // console.log("joined room:", `user:${id}`, socket.id);
       if(userShelter){
         socket.join(`shelter:${userShelter?._id}`);
       }
