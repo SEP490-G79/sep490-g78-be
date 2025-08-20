@@ -297,11 +297,12 @@ const getOverviewStatistic = async (req, res, next) => {
 const reviewShelterEstablishmentRequest = async (req, res, next) => {
   try {
     const { requestId, decision, rejectReason } = req.body;
-    const response = await shelterService.reviewShelterEstablishmentRequest({
+    const response = await shelterService.reviewShelterEstablishmentRequest(
+      req.params.id,
       requestId,
       decision,
       rejectReason,
-    });
+    );
     res.status(200).json(response);
   } catch (error) {
     res.status(404).json({ message: error.message });
