@@ -534,14 +534,33 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
 // shelter lay danh sach cac yeu cau
 const getShelterInvitationsAndRequests = async (shelterId) => {
   try {
+    const tempShelter = await Shelter.findById(shelterId);
+    if (!tempShelter) {
+      throw new Error("Không tìm thấy shelter");
+    }
+
+    // update các invitation mà đã hết hạn sang expired
+    await Shelter.updateMany(
+      {
+        _id: shelterId,
+      },
+      {
+        $set: { "invitations.$[elem].status": "expired" },
+      },
+      {
+        arrayFilters: [
+          {
+            "elem.status": "pending",
+            "elem.expireAt": { $lt: new Date() },
+          },
+        ],
+      }
+    );
+
     const shelter = await Shelter.findById(shelterId).populate([
       { path: "invitations.shelter", select: "email name avatar" },
       { path: "invitations.user", select: "email fullName avatar" },
     ]);
-
-    if (!shelter) {
-      throw new Error("Không tìm thấy shelter");
-    }
 
     // Mapping dữ liệu đúng interface
     const formatted = shelter.invitations.map((invitation) => ({
@@ -669,18 +688,27 @@ const reviewShelterInvitationRequest = async (shelterId, userId, decision) => {
         },
         {
           $set: {
-            "invitations.$[elem].status": "cancelled",
+            "invitations.$[requestElem].status": "cancelled",
+            "invitations.$[invitationElem].status": "declined"
           },
         },
         {
           arrayFilters: [
             {
-              "elem.user": userId,
-              "elem.status": "pending",
+              "requestElem.user": userId,
+              "requestElem.type": "request",
+              "requestElem.status": "pending",
+            },
+            {
+              "invitationElem.user": userId,
+              "invitationElem.type": "invitation",
+              "invitationElem.status": "pending",
             },
           ],
         }
       );
+
+
     } else if (decision === "reject") {
       // Chuyển invitation thành "declined"
       currInvitation.status = "declined";
@@ -899,7 +927,7 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
       request.status = "accepted";
 
 
-      // Cancel các yêu cầu khác
+      // Cancel các yêu cầu, lời mời khác của user ở các shelter khác
       await Shelter.updateMany(
         {
           _id: { $ne: shelterId },
@@ -908,14 +936,21 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
         },
         {
           $set: {
-            "invitations.$[elem].status": "cancelled",
+            "invitations.$[requestElem].status": "cancelled",
+            "invitations.$[invitationElem].status": "declined"
           },
         },
         {
           arrayFilters: [
             {
-              "elem.user": userId,
-              "elem.status": "pending",
+              "requestElem.user": request.user,
+              "requestElem.type": "request",
+              "requestElem.status": "pending",
+            },
+            {
+              "invitationElem.user": request.user,
+              "invitationElem.type": "invitation",
+              "invitationElem.status": "pending",
             },
           ],
         }
@@ -1283,20 +1318,33 @@ const reviewShelterEstablishmentRequest = async (adminId, requestId, decision = 
       await mailer.sendEmail(requester.email, subject, body);
 
     // cancel các yêu cầu vào trạm cứu hộ khác và reject các lời mời vào trạm cứu hộ (nếu có)
-    await Shelter.updateMany({
-      invitations: {user: requester._id, type: "request", status: "pending"}
-    },
-    {
-      $set: { "invitations.$.status": "cancelled" }
-    }  
-    )
-    await Shelter.updateMany({
-      invitations: {user: requester._id, type: "invitation", status: "pending"}
-    },
-    {
-      $set: { "invitations.$.status": "declined" }
-    }  
-    )
+    await Shelter.updateMany(
+      {
+        _id: { $ne: shelter._id },
+        "invitations.user": requester._id,
+        "invitations.status": "pending",
+      },
+      {
+        $set: {
+          "invitations.$[requestElem].status": "cancelled",
+          "invitations.$[invitationElem].status": "declined",
+        },
+      },
+      {
+        arrayFilters: [
+          {
+            "requestElem.user": requester._id,
+            "requestElem.type": "request",
+            "requestElem.status": "pending",
+          },
+          {
+            "invitationElem.user": requester._id,
+            "invitationElem.type": "invitation",
+            "invitationElem.status": "pending",
+          },
+        ],
+      }
+    );
 
     return {
       status: 200,
