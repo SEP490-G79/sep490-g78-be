@@ -163,11 +163,14 @@ const editProfile = async (userId, profileData, files) => {
       if (fullName.length < 2 || fullName.length > 50) {
         throw new Error("Họ và tên phải từ 2 đến 50 ký tự.");
       }
-      const nameParts = fullName.split(/\s+/);
-      if (nameParts.length < 2) {
-        throw new Error("Họ và tên phải bao gồm ít nhất 2 từ (họ và tên).");
+      const nameParts = fullName.split(" ");
+      for(let i=0; i< nameParts.length; i++){
+        if (nameParts[i].length < 1) {
+          throw new Error("Họ hoặc tên phải bao gồm ít nhất 1 từ.");
+        }
       }
-      const nameRegex = /^[A-ZÀ-Ỹ][a-zà-ỹ]+(?:\s[A-ZÀ-Ỹ][a-zà-ỹ]+)+$/u;
+      
+      const nameRegex = /^[A-ZÀ-Ỹ][a-zà-ỹ]*?(?:\s[A-ZÀ-Ỹ][a-zà-ỹ]*?)+$/u;
       if (!nameRegex.test(fullName)) {
         throw new Error(
           "Họ và tên không hợp lệ. Mỗi từ nên viết hoa đầu, không chứa số/ký tự đặc biệt."
@@ -186,10 +189,10 @@ const editProfile = async (userId, profileData, files) => {
     // Validate số điện thoại
     if (
       profileData.phoneNumber &&
-      !/^(0[0-9])+([0-9]{8})$/.test(profileData.phoneNumber)
+      !/^(0[3|5|7|8|9])+([0-9]{8})$/.test(profileData.phoneNumber)
     ) {
       throw new Error(
-        "Số điện thoại không hợp lệ. Phải bắt đầu bằng 0 và có 10 số."
+        "Số điện thoại không đúng format số Việt Nam."
       );
     }
 
@@ -227,7 +230,7 @@ const editProfile = async (userId, profileData, files) => {
 
     return updatedUser;
   } catch (error) {
-    console.error("Lỗi khi cập nhật thông tin:", error.message);
+    // console.error("Lỗi khi cập nhật thông tin:", error.message);
     throw error;
   }
 };
