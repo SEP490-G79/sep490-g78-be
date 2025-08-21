@@ -78,6 +78,7 @@ const analyzePetWithGPT = async (
   identificationFeature,
   colorList
 ) => {
+
   const prompt = `
       Bạn là một AI chuyên nhận diện con vật từ hình ảnh.
 
@@ -91,7 +92,7 @@ const analyzePetWithGPT = async (
       - identificationFeature: string (đặc điểm nhận dạng nổi bật chỉ có ở con vật này khác với đặc điểm chung của loài, nếu có)
 
       ## Yêu cầu đặc biệt:
-      - Nếu ảnh không đạt tiêu chuẩn, **trả về lỗi** với lý do cụ thể, ví dụ:
+      - Nếu ảnh không đạt tiêu chuẩn, *trả về lỗi* với lý do cụ thể, ví dụ:
         - Ảnh không phải ảnh thật, do AI tạo, ảnh hoạt hình.
         - Ảnh bị chỉnh sửa quá nhiều, không còn nhận diện được con vật.
         - Ảnh máu me, bạo lực, hoặc có nội dung không phù hợp.
@@ -117,10 +118,11 @@ const analyzePetWithGPT = async (
         {
           "error": "Loài '...' chưa được hỗ trợ trong hệ thống!, Giống '...' chưa được hỗ trợ trong hệ thống!"
         }
-        hoặc ...
+
 
 
         Nếu tất cả species và breeds đều hợp lệ, hãy trả về JSON kết quả như bình thường.
+        Nếu sau khi phân tích con vật, màu lông không nằm trong danh sách màu lông hợp lệ thì chuyển sang màu gần giống nhất trong danh sách hợp lệ.
         
         - DANH SÁCH SPECIES (kèm mô tả):
          ${JSON.stringify(speciesList)}

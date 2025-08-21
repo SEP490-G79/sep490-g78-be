@@ -187,6 +187,9 @@ const updatePet = async (petId, updateData) => {
   try {
     const pet = await Pet.findById(petId);
     if (!pet) throw new Error("Không tìm thấy thú cưng");
+    if(pet.status.toLowerCase() == "adopted"){
+      throw new Error("Không thể chỉnh sửa thông tin thú nuôi đã được nhận nuôi!");
+    }
 
     //Kiểm tra shelter có hợp lệ không
     if (
@@ -250,7 +253,6 @@ const updatePet = async (petId, updateData) => {
     throw error;
   }
 };
-
 const deletePet = async (req, res) => {
   try {
     const { petId, shelterId } = req.params;
