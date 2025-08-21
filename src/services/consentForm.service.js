@@ -67,75 +67,75 @@ const getById = async (consentFormId) => {
   }
 };
 
-const createForm = async (consentForm) => {
-  try {
-    const isExisted = await db.ConsentForm.findOne({
-      pet: consentForm.pet,
-      adopter: consentForm.adopter,
-    });
+// const createForm = async (consentForm) => {
+//   try {
+//     const isExisted = await db.ConsentForm.findOne({
+//       pet: consentForm.pet,
+//       adopter: consentForm.adopter,
+//     });
 
-    if (isExisted) {
-      throw new Error(
-        "Chỉ có thể tạo duy nhất một bản đồng ý cho một thú nuôi và người nhận nuôi!"
-      );
-    }
+//     if (isExisted) {
+//       throw new Error(
+//         "Chỉ có thể tạo duy nhất một bản đồng ý cho một thú nuôi và người nhận nuôi!"
+//       );
+//     }
 
-    const attachmentsRaw = consentForm.attachments;
+//     const attachmentsRaw = consentForm.attachments;
 
-    const attachments = [];
+//     const attachments = [];
 
-    if (attachmentsRaw && attachmentsRaw.length > 0) {
-      for (const attachment of attachmentsRaw) {
-        const { originalname, path, size, mimetype } = attachment;
-        try {
-          const uploadedPhoto = await cloudinary.uploader.upload(path, {
-            folder: "consentForms",
-            resource_type: "auto",
-          });
-          if (!uploadedPhoto) {
-            throw Error("Lỗi khi upload tệp đính kèm!");
-          }
-          attachments.push({
-            fileName: originalname,
-            url: uploadedPhoto.secure_url,
-            size: size || 0,
-            mimeType: mimetype,
-          });
+//     if (attachmentsRaw && attachmentsRaw.length > 0) {
+//       for (const attachment of attachmentsRaw) {
+//         const { originalname, path, size, mimetype } = attachment;
+//         try {
+//           const uploadedPhoto = await cloudinary.uploader.upload(path, {
+//             folder: "consentForms",
+//             resource_type: "auto",
+//           });
+//           if (!uploadedPhoto) {
+//             throw Error("Lỗi khi upload tệp đính kèm!");
+//           }
+//           attachments.push({
+//             fileName: originalname,
+//             url: uploadedPhoto.secure_url,
+//             size: size || 0,
+//             mimeType: mimetype,
+//           });
 
-          await fs.unlink(attachment.path);
-        } catch (error) {
-          throw error;
-        }
-      }
-    }
+//           await fs.unlink(attachment.path);
+//         } catch (error) {
+//           throw error;
+//         }
+//       }
+//     }
 
-    const newConsentForm = new db.ConsentForm({
-      ...consentForm,
-      attachments: attachments,
-      status: "draft",
-    });
-    const savedConsentForm = await newConsentForm.save();
-    if (!savedConsentForm) {
-      throw new Error(
-        "Lỗi khi lưu bản đồng ý nhận nuôi. Vui lòng thử lại sau."
-      );
-    }
-    const populatedConsentForm = await db.ConsentForm.findById(
-      savedConsentForm._id
-    )
-      .populate("shelter", "_id name address avatar status")
-      .populate("adopter", "_id fullName avatar phoneNumber address status")
-      .populate(
-        "pet",
-        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
-      )
-      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+//     const newConsentForm = new db.ConsentForm({
+//       ...consentForm,
+//       attachments: attachments,
+//       status: "draft",
+//     });
+//     const savedConsentForm = await newConsentForm.save();
+//     if (!savedConsentForm) {
+//       throw new Error(
+//         "Lỗi khi lưu bản đồng ý nhận nuôi. Vui lòng thử lại sau."
+//       );
+//     }
+//     const populatedConsentForm = await db.ConsentForm.findById(
+//       savedConsentForm._id
+//     )
+//       .populate("shelter", "_id name address avatar status")
+//       .populate("adopter", "_id fullName avatar phoneNumber address status")
+//       .populate(
+//         "pet",
+//         "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+//       )
+//       .populate("createdBy", "_id fullName avatar phoneNumber address status");
 
-    return populatedConsentForm;
-  } catch (error) {
-    throw error;
-  }
-};
+//     return populatedConsentForm;
+//   } catch (error) {
+//     throw error;
+//   }
+// };
 
 // const editForm = async (consentFormId, updateForm) => {
 //   try {
@@ -212,6 +212,85 @@ const createForm = async (consentForm) => {
 //   }
 // };
 
+const createForm = async (consentForm) => {
+  try {
+    const isExisted = await db.ConsentForm.findOne({
+      pet: consentForm.pet,
+      adopter: consentForm.adopter,
+    });
+
+    if (isExisted) {
+      throw new Error(
+        "Chỉ có thể tạo duy nhất một bản đồng ý cho một thú nuôi và người nhận nuôi!"
+      );
+    }
+
+    const isProcessing = await db.ConsentForm.findOne({
+      pet: consentForm.pet,
+      status: { $nin: ["approved", "cancelled"] }
+    });    
+
+    if (isProcessing) {
+      throw new Error(
+        "Đã có người đang trong quá trình cam kết!"
+      );
+    }
+    const attachmentsRaw = consentForm.attachments;
+
+    const attachments = [];
+
+    if (attachmentsRaw && attachmentsRaw.length > 0) {
+      for (const attachment of attachmentsRaw) {
+        const { originalname, path, size, mimetype } = attachment;
+        try {
+          const uploadedPhoto = await cloudinary.uploader.upload(path, {
+            folder: "consentForms",
+            resource_type: "auto",
+          });
+          if (!uploadedPhoto) {
+            throw Error("Lỗi khi upload tệp đính kèm!");
+          }
+          attachments.push({
+            fileName: originalname,
+            url: uploadedPhoto.secure_url,
+            size: size || 0,
+            mimeType: mimetype,
+          });
+
+          await fs.unlink(attachment.path);
+        } catch (error) {
+          throw error;
+        }
+      }
+    }
+
+    const newConsentForm = new db.ConsentForm({
+      ...consentForm,
+      attachments: attachments,
+      status: "draft",
+    });
+    const savedConsentForm = await newConsentForm.save();
+    if (!savedConsentForm) {
+      throw new Error(
+        "Lỗi khi lưu bản đồng ý nhận nuôi. Vui lòng thử lại sau."
+      );
+    }
+    const populatedConsentForm = await db.ConsentForm.findById(
+      savedConsentForm._id
+    )
+      .populate("shelter", "_id name address avatar status")
+      .populate("adopter", "_id fullName avatar phoneNumber address status")
+      .populate(
+        "pet",
+        "_id name photos petCode status identificationFeature sterilizationStatus isMale  "
+      )
+      .populate("createdBy", "_id fullName avatar phoneNumber address status");
+
+    return populatedConsentForm;
+  } catch (error) {
+    throw error;
+  }
+};
 const editForm = async (consentFormId, updateForm) => {
   try {
     const consentForm = await db.ConsentForm.findById(consentFormId)
@@ -490,12 +569,13 @@ const changeFormStatusShelter = async (consentFormId, status) => {
               otherAdopterIds,
               updatedConsentForm?.pet?._id
             );
+            //  const redirectUrl = `/adoption-form/${petId}/${submissionId}`;
           const notifOthers = await notificationService.createNotification(
             updatedConsentForm.createdBy._id,
             otherAdopterIds,
             `Thú cưng ${updatedConsentForm.pet.name} đã được nhận nuôi bởi người khác. Cảm ơn bạn đã quan tâm!`,
             "adoption",
-            `/pet/${updatedConsentForm.pet._id}`
+            `/adoption-form/${updatedConsentForm.pet._id}`
           );
           try {
             for (const { userId, submissionId, selectedSchedule } of otherSubs) {
@@ -554,7 +634,7 @@ const changeFormStatusShelter = async (consentFormId, status) => {
         const approvedNoti = await notificationService.createNotification(
           updatedConsentForm.createdBy._id,
           [updatedConsentForm.adopter._id],
-          `Trung tâm cứu hộ ${updatedConsentForm.shelter.name} đã duyệt bản đồng ý nhận nuôi bạn ${updatedConsentForm.pet.name}!`,
+          `Chúc mừng bạn đã nhận nuôi thành công ${updatedConsentForm.pet.name}!`,
           "adoption",
           `/adoption-form/${updatedConsentForm.pet._id}`
         );
