@@ -358,60 +358,39 @@ const getShelterMembers = async (shelterId) => {
 // tim user du dieu kien de invite
 const findEligibleUsersToInvite = async (shelterId) => {
   try {
-    // 1. Không thuộc trạm cứu hộ hiện tại
-    const currentMemberIds = (await getShelterMembers(shelterId)).map(
-      (member) => member.id
+    // 1. Lấy tất cả memberId của các shelter đang active
+    const shelters = await Shelter.find({ status: "active" }).select(
+      "members._id"
     );
-    const notCurrentMembers = await User.find({
-      _id: { $nin: currentMemberIds },
-    });
- 
-
-    // 2. Tài khoản đã kích hoạt
-    const activatedAccount = notCurrentMembers.filter(
-      (user) => user.status === "active"
+    const allMemberIds = shelters.flatMap((s) =>
+      s.members.map((member) => member._id.toString())
     );
 
+    // 2. Tìm user đã kích hoạt nhưng không nằm trong bất kỳ shelter nào
+    const usersWithoutShelter = await User.find({
+      status: "active",
+      roles: { $in: ["user"] },
+      _id: { $nin: allMemberIds },
+    }).select("_id email avatar");
 
-    // 3. Không là thành viên của trạm cứu hộ nào khác
-    const allShelterMembers = await Shelter.find({ status: "active" }).select(
-      "members"
-    );
-    const memberIdSet = new Set(allShelterMembers.map((id) => id.toString()));
-    const notInAnyShelter = activatedAccount.filter(
-      (user) => !memberIdSet.has(user._id)
-    );
+    // 3. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
+    const currentShelter = await Shelter.findById(shelterId);
+    let userWithPendingInvitations = []
+    for(let i=0; i< currentShelter.invitations.length; i++){
+      if(currentShelter.invitations[i].status === "pending"){
+        userWithPendingInvitations.push(String(currentShelter.invitations[i].user))
+      }
+    }
+    const usersWithoutInvitations = usersWithoutShelter.filter(user => {
+      if(!userWithPendingInvitations.includes(String(user?._id))){
+        return user;
+      }
+    }) 
 
-
-    // 3. Không có yêu cầu thành lập trạm cứu hộ nào
-    const verifyingShelters = await Shelter.find({
-      status: "verifying",
-    }).populate("members._id").select("members");
-    const formatedVerifyingUsers = verifyingShelters?.flatMap(shelter => shelter?.members.map(member => member._id));
-    const eligibleUsers = notInAnyShelter.filter(
-      (user) => !formatedVerifyingUsers.find(item => String(item._id) === String(user._id))
-    );
-
-    // 4. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
-    const currentShelter = await Shelter.findById(shelterId).select(
-      "invitations"
-    );
-    const pendingReceivers = new Set(
-      currentShelter.invitations
-        .filter((inv) => inv.status === "pending")
-        .map((inv) => inv.user.toString())
-    );
-
-    const finalEligibleUsers = eligibleUsers.filter(
-      (user) => !pendingReceivers.has(user._id.toString())
-    );
-
-    return finalEligibleUsers.map((user) => {
+    return usersWithoutInvitations.map((user) => {
       return {
         email: user.email,
-        avatar:
-          user.avatar ||
-          "https://static.vecteezy.com/system/resources/thumbnails/009/292/244/small/default-avatar-icon-of-social-media-user-vector.jpg",
+        avatar:user.avatar
       };
     });
   } catch (error) {
