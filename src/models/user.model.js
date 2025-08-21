@@ -51,6 +51,7 @@ const userSchema = new mongoose.Schema(
     phoneNumber: {
       type: String,
       unique: [true, "Số điện thoại bị trùng với số điện thoại của tài khoản khác"],
+      sparse: true,
       match: /^(0[3|5|7|8|9])+([0-9]{8})$/,
     },
     background: {
