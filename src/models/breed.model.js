@@ -10,10 +10,12 @@ const breedSchema = new mongoose.Schema(
     name: {
       type: String,
       required: true,
+      max: [100, "Tên giống chỉ cho phép tối đa 100 ký tự"],
       trim: true,
     },
     description: {
       type: String,
+      max: [1000, "Miêu tả chỉ cho phép tối đa 1000 ký tự"],
       trim: true,
     },
   },

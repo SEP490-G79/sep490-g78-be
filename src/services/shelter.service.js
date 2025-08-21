@@ -19,6 +19,7 @@ const AdoptionForm = require("../models/adoptionForm.model");
 const AdoptionSubmission = require("../models/adoptionSubmission.model");
 const Species = require("../models/species.model");
 const Breed = require("../models/breed.model");
+const notificationService = require("./notification.service");
 
 //USER
 async function getAll() {
@@ -426,13 +427,14 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
     if (!shelter) {
       throw new Error("Không tìm thấy shelter");
     }
+    let eligibleEmailList = [];
 
     const invitationsToSend = [];
 
     for (const email of emailsList) {
       const user = await User.findOne({ email });
       if (!user) {
-        console.warn(`Không tìm thấy người dùng với email ${email}`);
+        // console.warn(`Không tìm thấy người dùng với email ${email}`);
         continue;
       }
 
@@ -441,7 +443,7 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
         (member) => member._id.toString() === user._id.toString()
       );
       if (isMember) {
-        console.warn(`${email} đã là thành viên`);
+        // console.warn(`${email} đã là thành viên`);
         continue;
       }
 
@@ -449,10 +451,23 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
       const existing = shelter.invitations.find(
         (inv) =>
           inv.user.toString() === user._id.toString() &&
+          inv.type.toString() === "invitation" &&
           inv.status === "pending"
       );
       if (existing) {
-        console.warn(`Đã có lời mời pending cho ${email}`);
+        // console.warn(`Đã có lời mời pending cho ${email}`);
+        continue;
+      }
+
+      // Check nếu đã có yêu cầu vào trạm cứu hộ đang pending
+      const hasRequest = shelter.invitations.find(
+        (inv) =>
+          inv.user.toString() === user._id.toString() &&
+          inv.type.toString() === "request" &&
+          inv.status === "pending"
+      );
+      if (hasRequest) {
+        // console.warn(`Đã có yêu cầu vào trạm cứu hộ pending cho ${email}`);
         continue;
       }
 
@@ -470,6 +485,8 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
       };
 
       invitationsToSend.push(newInvitation);
+
+      eligibleEmailList.push(email);
     }
 
     // Push tất cả invitation vào shelter
@@ -479,6 +496,10 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
         { $push: { invitations: { $each: invitationsToSend } } },
         { new: true }
       );
+    }
+
+    if(eligibleEmailList.length < 1){
+      throw new Error("Không có tài khoản đủ điều kiện để mời")
     }
 
     // Gui email thong bao loi moi
@@ -497,7 +518,7 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
     </p>
   </div>
 `;
-    await mailer.sendEmail(emailsList, subject, body);
+    await mailer.sendEmail(eligibleEmailList, subject, body);
 
     return {
       message: "Đã gửi lời mời",
@@ -513,14 +534,33 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
 // shelter lay danh sach cac yeu cau
 const getShelterInvitationsAndRequests = async (shelterId) => {
   try {
+    const tempShelter = await Shelter.findById(shelterId);
+    if (!tempShelter) {
+      throw new Error("Không tìm thấy shelter");
+    }
+
+    // update các invitation mà đã hết hạn sang expired
+    await Shelter.updateMany(
+      {
+        _id: shelterId,
+      },
+      {
+        $set: { "invitations.$[elem].status": "expired" },
+      },
+      {
+        arrayFilters: [
+          {
+            "elem.status": "pending",
+            "elem.expireAt": { $lt: new Date() },
+          },
+        ],
+      }
+    );
+
     const shelter = await Shelter.findById(shelterId).populate([
       { path: "invitations.shelter", select: "email name avatar" },
       { path: "invitations.user", select: "email fullName avatar" },
     ]);
-
-    if (!shelter) {
-      throw new Error("Không tìm thấy shelter");
-    }
 
     // Mapping dữ liệu đúng interface
     const formatted = shelter.invitations.map((invitation) => ({
@@ -648,18 +688,27 @@ const reviewShelterInvitationRequest = async (shelterId, userId, decision) => {
         },
         {
           $set: {
-            "invitations.$[elem].status": "cancelled",
+            "invitations.$[requestElem].status": "cancelled",
+            "invitations.$[invitationElem].status": "declined"
           },
         },
         {
           arrayFilters: [
             {
-              "elem.user": userId,
-              "elem.status": "pending",
+              "requestElem.user": userId,
+              "requestElem.type": "request",
+              "requestElem.status": "pending",
+            },
+            {
+              "invitationElem.user": userId,
+              "invitationElem.type": "invitation",
+              "invitationElem.status": "pending",
             },
           ],
         }
       );
+
+
     } else if (decision === "reject") {
       // Chuyển invitation thành "declined"
       currInvitation.status = "declined";
@@ -770,6 +819,17 @@ const requestIntoShelter = async (shelterEmail, senderId) => {
       throw new Error("Chỉ được gửi một yêu cầu duy nhất");
     }
 
+    // Check nếu đã có lời mời từ phía shelter
+    const hasInvitation = shelter.invitations.find(
+      (inv) =>
+        String(inv.user) === String(user._id) &&
+        inv.type === "invitation" &&
+        inv.status === "pending"
+    );
+    if (hasInvitation) {
+      throw new Error("Bạn đã có lời mời vào trạm cứu hộ này! Vui lòng kiểm tra lời mời");
+    }
+
     const newRequest = {
       _id: new mongoose.Types.ObjectId(),
       shelter: shelter._id,
@@ -867,7 +927,7 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
       request.status = "accepted";
 
 
-      // Cancel các yêu cầu khác
+      // Cancel các yêu cầu, lời mời khác của user ở các shelter khác
       await Shelter.updateMany(
         {
           _id: { $ne: shelterId },
@@ -876,14 +936,21 @@ const reviewShelterRequest = async (shelterId, requestId, decision) => {
         },
         {
           $set: {
-            "invitations.$[elem].status": "cancelled",
+            "invitations.$[requestElem].status": "cancelled",
+            "invitations.$[invitationElem].status": "declined"
           },
         },
         {
           arrayFilters: [
             {
-              "elem.user": userId,
-              "elem.status": "pending",
+              "requestElem.user": request.user,
+              "requestElem.type": "request",
+              "requestElem.status": "pending",
+            },
+            {
+              "invitationElem.user": request.user,
+              "invitationElem.type": "invitation",
+              "invitationElem.status": "pending",
             },
           ],
         }
@@ -1190,13 +1257,9 @@ const getOverviewStatistic = async (selectedYear) => {
     throw error;
   }
 };
-const reviewShelterEstablishmentRequest = async ({
-  requestId,
-  decision = "reject",
-  rejectReason = "No reason",
-}) => {
+const reviewShelterEstablishmentRequest = async (adminId, requestId, decision = "reject", rejectReason = "No reason") => {
   try {
-    const shelter = await Shelter.findOne({ _id: requestId });
+    const shelter = await Shelter.findOne({ _id: requestId }).populate("members._id");
     if (!shelter) {
       throw new Error("Không tìm thấy shelter với requestId đã cho.");
     }
@@ -1204,24 +1267,84 @@ const reviewShelterEstablishmentRequest = async ({
       throw new Error("Yêu cầu đã được xử lý trong quá khứ!");
     }
 
+    const admin = await User.findById(adminId);
+    const requester = shelter?.members[0]._id;
+
     // hoan thanh viec thanh lap shelter
     if (decision === "approve") {
       await Shelter.findOneAndUpdate({ _id: requestId }, { status: "active" });
+      await notificationService.createNotification(adminId, 
+        requester._id, 
+        "Yêu cầu thành lập trạm cứu hộ của bạn đã được chấp thuận",
+        "system",
+        `/shelters/${shelter._id}`);
     } else if (decision === "reject") {
       await Shelter.findOneAndUpdate(
         { _id: requestId },
         { status: "rejected", rejectReason: rejectReason }
       );
-      return {
-        status: 200,
-        message: "Xử lý yêu cầu thành lập shelter thành công",
-        decision: decision === "approve" ? "Chấp thuận" : "Từ chối",
-      };
+      await notificationService.createNotification(adminId, 
+        requester._id, 
+        "Yêu cầu thành lập trạm cứu hộ của bạn đã bị từ chối. Vui lòng xem chi tiết ở email",
+        "system",
+        `#`);
     } else {
       throw new Error("Thiếu quyết định!");
     }
 
-    // reject cac yeu cau moi vao shelter (neu co)
+
+    // gui email
+    const subject = `Cập nhập yêu cầu thành lập trạm cứu hộ ${shelter?.name}`;
+      const body = `
+    <div>
+      <p>Xin chào <b>${requester?.fullName}</b>,</p>
+      <p>Chúng tôi xin thông báo về tình trạng yêu cầu thành lập trạm cứu hộ của bạn với các thông tin chi tiết dưới đây:</p>
+      <div class="details">
+        <p><strong>Tên trạm cứu hộ:</strong> ${shelter?.name}</p>
+        <p><strong>Thời gian gửi yêu cầu:</strong> ${shelter?.createdAt}</p>
+        <p><strong>Thời gian xử lý:</strong>  ${shelter?.updatedAt}</p>
+        <p><strong>Quyết định:</strong> ${decision === "approve" ? "Chấp thuận" : "Từ chối"}</p>
+        ${decision === "reject" && 
+          `<p><strong>Lý do từ chối:</strong>  ${shelter?.rejectReason}</p>`}
+      </div>
+      <p>Vui lòng kiểm tra lại thông tin và phản hồi nếu có bất kỳ thắc mắc nào thông qua email sau ${admin?.email}.</p>
+      <p>Trân trọng,</p>
+      <p>PawShelter</p>
+    </div>
+    <div class="footer">
+      <p style="opacity: 0.5; font-size: 0.9rem">Đây là email được gửi tự động. Vui lòng không trả lời email này.</p>
+    </div>  
+`;
+      await mailer.sendEmail(requester.email, subject, body);
+
+    // cancel các yêu cầu vào trạm cứu hộ khác và reject các lời mời vào trạm cứu hộ (nếu có)
+    await Shelter.updateMany(
+      {
+        _id: { $ne: shelter._id },
+        "invitations.user": requester._id,
+        "invitations.status": "pending",
+      },
+      {
+        $set: {
+          "invitations.$[requestElem].status": "cancelled",
+          "invitations.$[invitationElem].status": "declined",
+        },
+      },
+      {
+        arrayFilters: [
+          {
+            "requestElem.user": requester._id,
+            "requestElem.type": "request",
+            "requestElem.status": "pending",
+          },
+          {
+            "invitationElem.user": requester._id,
+            "invitationElem.type": "invitation",
+            "invitationElem.status": "pending",
+          },
+        ],
+      }
+    );
 
     return {
       status: 200,
