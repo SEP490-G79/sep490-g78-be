@@ -235,6 +235,7 @@ const searchPetWithGPT = async (
 
 
         Nếu tất cả species và breeds đều hợp lệ, hãy trả về JSON kết quả như bình thường.
+        Nếu sau khi phân tích con vật, màu lông không nằm trong danh sách màu lông hợp lệ thì chuyển sang màu gần giống nhất trong danh sách hợp lệ.
         
         - DANH SÁCH SPECIES (kèm mô tả):
          ${JSON.stringify(speciesList)}
