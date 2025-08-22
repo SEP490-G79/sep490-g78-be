@@ -21,6 +21,46 @@ const Species = require("../models/species.model");
 const Breed = require("../models/breed.model");
 const notificationService = require("./notification.service");
 
+async function generateEligibleUserToInvite(shelterId){
+  try{
+// 1. Lấy tất cả memberId của các shelter đang active
+    const shelters = await Shelter.find({ status: "active" }).select(
+      "members._id"
+    );
+    const allMemberIds = shelters.flatMap((s) =>
+      s.members.map((member) => member._id.toString())
+    );
+
+    // 2. Tìm user đã kích hoạt nhưng không nằm trong bất kỳ shelter nào
+    const usersWithoutShelter = await User.find({
+      status: "active",
+      roles: { $in: ["user"] },
+      _id: { $nin: allMemberIds },
+    }).select("_id email avatar");
+
+    // 3. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
+    const currentShelter = await Shelter.findById(shelterId);
+    let userWithPendingInvitations = []
+    for(let i=0; i< currentShelter.invitations.length; i++){
+      if(currentShelter.invitations[i].status === "pending"){
+        userWithPendingInvitations.push(String(currentShelter.invitations[i].user))
+      }
+    }
+    const usersWithoutInvitations = usersWithoutShelter.filter(user => {
+      if(!userWithPendingInvitations.includes(String(user?._id))){
+        return user;
+      }
+    }) 
+
+    return usersWithoutInvitations;
+  }catch(error){
+    console.log(error)
+  }
+}
+
+
+
+
 //USER
 async function getAll() {
   try {
@@ -358,60 +398,11 @@ const getShelterMembers = async (shelterId) => {
 // tim user du dieu kien de invite
 const findEligibleUsersToInvite = async (shelterId) => {
   try {
-    // 1. Không thuộc trạm cứu hộ hiện tại
-    const currentMemberIds = (await getShelterMembers(shelterId)).map(
-      (member) => member.id
-    );
-    const notCurrentMembers = await User.find({
-      _id: { $nin: currentMemberIds },
-    });
- 
-
-    // 2. Tài khoản đã kích hoạt
-    const activatedAccount = notCurrentMembers.filter(
-      (user) => user.status === "active"
-    );
-
-
-    // 3. Không là thành viên của trạm cứu hộ nào khác
-    const allShelterMembers = await Shelter.find({ status: "active" }).select(
-      "members"
-    );
-    const memberIdSet = new Set(allShelterMembers.map((id) => id.toString()));
-    const notInAnyShelter = activatedAccount.filter(
-      (user) => !memberIdSet.has(user._id)
-    );
-
-
-    // 3. Không có yêu cầu thành lập trạm cứu hộ nào
-    const verifyingShelters = await Shelter.find({
-      status: "verifying",
-    }).populate("members._id").select("members");
-    const formatedVerifyingUsers = verifyingShelters?.flatMap(shelter => shelter?.members.map(member => member._id));
-    const eligibleUsers = notInAnyShelter.filter(
-      (user) => !formatedVerifyingUsers.find(item => String(item._id) === String(user._id))
-    );
-
-    // 4. Không có lời mời hoặc yêu cầu đang chờ xử lý trong shelter hiện tại
-    const currentShelter = await Shelter.findById(shelterId).select(
-      "invitations"
-    );
-    const pendingReceivers = new Set(
-      currentShelter.invitations
-        .filter((inv) => inv.status === "pending")
-        .map((inv) => inv.user.toString())
-    );
-
-    const finalEligibleUsers = eligibleUsers.filter(
-      (user) => !pendingReceivers.has(user._id.toString())
-    );
-
-    return finalEligibleUsers.map((user) => {
+    const eligibleUsers = await generateEligibleUserToInvite(shelterId);
+    return eligibleUsers.map((user) => {
       return {
         email: user.email,
-        avatar:
-          user.avatar ||
-          "https://static.vecteezy.com/system/resources/thumbnails/009/292/244/small/default-avatar-icon-of-social-media-user-vector.jpg",
+        avatar:user.avatar
       };
     });
   } catch (error) {
@@ -424,58 +415,22 @@ const findEligibleUsersToInvite = async (shelterId) => {
 const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
   try {
     const shelter = await Shelter.findById(shelterId);
-    if (!shelter) {
-      throw new Error("Không tìm thấy shelter");
-    }
+    const eligibleUsers = await generateEligibleUserToInvite(shelterId);
+    const eligibleUsersEmail = eligibleUsers.map(user => user.email);
     let eligibleEmailList = [];
-
     const invitationsToSend = [];
 
     for (const email of emailsList) {
-      const user = await User.findOne({ email });
-      if (!user) {
-        // console.warn(`Không tìm thấy người dùng với email ${email}`);
+      if(!eligibleUsersEmail.includes(email)){
         continue;
       }
 
-      // Check nếu user đã là member
-      const isMember = shelter.members.some(
-        (member) => member._id.toString() === user._id.toString()
-      );
-      if (isMember) {
-        // console.warn(`${email} đã là thành viên`);
-        continue;
-      }
-
-      // Check nếu đã có lời mời đang pending
-      const existing = shelter.invitations.find(
-        (inv) =>
-          inv.user.toString() === user._id.toString() &&
-          inv.type.toString() === "invitation" &&
-          inv.status === "pending"
-      );
-      if (existing) {
-        // console.warn(`Đã có lời mời pending cho ${email}`);
-        continue;
-      }
-
-      // Check nếu đã có yêu cầu vào trạm cứu hộ đang pending
-      const hasRequest = shelter.invitations.find(
-        (inv) =>
-          inv.user.toString() === user._id.toString() &&
-          inv.type.toString() === "request" &&
-          inv.status === "pending"
-      );
-      if (hasRequest) {
-        // console.warn(`Đã có yêu cầu vào trạm cứu hộ pending cho ${email}`);
-        continue;
-      }
-
+      const userId = eligibleUsers.find(user => user.email === email && user?._id);
       // Tạo invitation mới
       const newInvitation = {
         _id: new mongoose.Types.ObjectId(),
         shelter: shelterId,
-        user: user._id,
+        user: userId,
         type: "invitation",
         roles,
         status: "pending",
@@ -485,9 +440,11 @@ const inviteShelterMembers = async (shelterId, emailsList = [], roles) => {
       };
 
       invitationsToSend.push(newInvitation);
-
       eligibleEmailList.push(email);
     }
+
+    // console.log(invitationsToSend)
+    // return {message: "OK"}
 
     // Push tất cả invitation vào shelter
     if (invitationsToSend.length > 0) {
