@@ -1231,7 +1231,7 @@ const reviewShelterEstablishmentRequest = async (adminId, requestId, decision = 
     if (decision === "approve") {
       await Shelter.findOneAndUpdate({ _id: requestId }, { status: "active" });
       await notificationService.createNotification(adminId, 
-        requester._id, 
+        [requester._id], 
         "Yêu cầu thành lập trạm cứu hộ của bạn đã được chấp thuận",
         "system",
         `/shelters/${shelter._id}`);
@@ -1241,7 +1241,7 @@ const reviewShelterEstablishmentRequest = async (adminId, requestId, decision = 
         { status: "rejected", rejectReason: rejectReason }
       );
       await notificationService.createNotification(adminId, 
-        requester._id, 
+        [requester._id], 
         "Yêu cầu thành lập trạm cứu hộ của bạn đã bị từ chối. Vui lòng xem chi tiết ở email",
         "system",
         `#`);
@@ -1258,11 +1258,13 @@ const reviewShelterEstablishmentRequest = async (adminId, requestId, decision = 
       <p>Chúng tôi xin thông báo về tình trạng yêu cầu thành lập trạm cứu hộ của bạn với các thông tin chi tiết dưới đây:</p>
       <div class="details">
         <p><strong>Tên trạm cứu hộ:</strong> ${shelter?.name}</p>
-        <p><strong>Thời gian gửi yêu cầu:</strong> ${shelter?.createdAt}</p>
-        <p><strong>Thời gian xử lý:</strong>  ${shelter?.updatedAt}</p>
+        <p><strong>Thời gian gửi yêu cầu:</strong> ${shelter?.createdAt.toLocaleString("vi-VN")}</p>
+        <p><strong>Thời gian xử lý:</strong>  ${shelter?.updatedAt.toLocaleString("vi-VN")}</p>
         <p><strong>Quyết định:</strong> ${decision === "approve" ? "Chấp thuận" : "Từ chối"}</p>
-        ${decision === "reject" && 
-          `<p><strong>Lý do từ chối:</strong>  ${shelter?.rejectReason}</p>`}
+        ${decision === "reject" ?
+          `<p><strong>Lý do từ chối:</strong>  ${rejectReason}</p>` :
+          ""
+        }
       </div>
       <p>Vui lòng kiểm tra lại thông tin và phản hồi nếu có bất kỳ thắc mắc nào thông qua email sau ${admin?.email}.</p>
       <p>Trân trọng,</p>
