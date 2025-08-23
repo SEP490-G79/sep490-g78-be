@@ -205,6 +205,20 @@ const updateSubmissionStatus = async (submissionId, status) => {
       error.statusCode = 400;
       throw error;
     }
+    if (status === "approved") {
+      const alreadyApproved = await db.AdoptionSubmission.findOne({
+        adoptionForm: submission.adoptionForm._id,
+        status: "approved",
+        _id: { $ne: submission._id } 
+      });
+      if (alreadyApproved) {
+        const error = new Error(
+          "Đã có một hồ sơ khác được duyệt cho đơn nhận nuôi này. Không thể duyệt thêm."
+        );
+        error.statusCode = 400;
+        throw error;
+      }
+    }
 
     submission.status = status;
     await submission.save();
