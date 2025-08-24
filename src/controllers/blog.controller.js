@@ -13,12 +13,6 @@ const getBlogsByShelter = async (req, res) => {
 const getListBlogs = async (req, res) => {
   try {
     const blogs = await blogService.getListBlogs();
-    if (!blogs) {
-      return res.status(404).json({
-        success: false,
-        message: error.message || "Không có bài viết nào",
-      });
-    }
     res.status(200).json(blogs);
   } catch (error) {
     res.status(400).json({
@@ -46,22 +40,8 @@ const getBlogById = async (req, res) => {
 };
 
 const getListBlogsByShelter = async (req, res) => {
-  const shelterId = req.params.shelterId;
-  if (!shelterId) {
-    return res.status(400).json({
-      success: false,
-      message: error.message || "ID trạm cứu hộ không được cung cấp",
-    });
-  }
   try {
-    const blogs = await blogService.getListBlogsByShelter(shelterId);
-    if (!blogs || blogs.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: error.message || "Không có bài viết nào của trạm cứu hộ này",
-      });
-    }
-
+    const blogs = await blogService.getListBlogsByShelter(req.params.shelterId);
     res.status(200).json({
       success: true,
       message: "Danh sách bài viết của trạm cứu hộ",
@@ -70,8 +50,7 @@ const getListBlogsByShelter = async (req, res) => {
   } catch (error) {
     res.status(400).json({
       success: false,
-      message:
-        error.message || "Lỗi khi lấy danh sách bài viết của trạm cứu hộ",
+      message: error.message || "Lỗi khi lấy danh sách bài viết của trạm cứu hộ",
     });
   }
 };
