@@ -298,7 +298,7 @@ const reviewShelterEstablishmentRequest = async (req, res, next) => {
   try {
     const { requestId, decision, rejectReason } = req.body;
     const response = await shelterService.reviewShelterEstablishmentRequest(
-      req.params.id,
+      req.payload.id,
       requestId,
       decision,
       rejectReason,
