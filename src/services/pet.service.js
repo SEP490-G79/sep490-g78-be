@@ -299,7 +299,8 @@ const getPetList = async () => {
       .populate("breeds")
       .populate("species")
       .populate("shelter")
-      .populate("adopter");
+      .populate("adopter")
+      .sort({ createdAt: -1 });
     const result = pets.map((pet) => {
       return {
         _id: pet._id,
