@@ -88,7 +88,8 @@ const analyzePetWithGPT = async (
       - breeds: [string] (danh sách giống loài) (trả về ít nhất 1 và không quá 2 breed)
       - age: number (ước tính tuổi theo tháng)
       - weight: number (ước tính cân nặng tính bằng kg)
-      - color: [string] (danh sách màu lông chủ đạo, chỉ chọn từ danh sách được cung cấp) (trả về ít nhất 1 và không quá 2 màu)
+      - colors: [string] (danh sách màu lông chủ đạo **(chiếm trên 50% bề mặt)**, chỉ chọn từ danh sách được cung cấp)  
+      (trả về ít nhất 1 và không quá 2 màu; nếu không có màu nào đạt độ khớp ≥80% thì trả về [])
       - identificationFeature: string (đặc điểm nhận dạng nổi bật chỉ có ở con vật này khác với đặc điểm chung của loài, nếu có)
 
       ## Yêu cầu đặc biệt:
@@ -122,7 +123,7 @@ const analyzePetWithGPT = async (
 
 
         Nếu tất cả species và breeds đều hợp lệ, hãy trả về JSON kết quả như bình thường.
-        Nếu sau khi phân tích con vật, màu lông không nằm trong danh sách màu lông hợp lệ thì chuyển sang màu gần giống nhất trong danh sách hợp lệ.
+
         
         - DANH SÁCH SPECIES (kèm mô tả):
          ${JSON.stringify(speciesList)}
@@ -149,6 +150,16 @@ const analyzePetWithGPT = async (
         "weight": 5.5,
         "colors": ["vàng đậm", "đen"],
         "identificationFeature": "Có một đốm trắng ở chân trước"
+      }
+
+      ## Đầu ra JSON mẫu (nếu ảnh không có màu phù hợp):
+      {
+        "species": "Mèo",
+        "breeds": ["Mèo Xiêm"],
+        "age": 6,
+        "weight": 3.1,
+        "colors": [],
+        "identificationFeature": "Có 2 đốm trắng nhỏ ở ngực"
       }
 
       ## Đầu ra JSON mẫu (nếu ảnh bị lỗi):
@@ -202,7 +213,8 @@ const searchPetWithGPT = async (
       - breeds: [string] (danh sách giống loài) (trả về ít nhất 1 và không quá 2 breed)
       - age: number (ước tính tuổi theo tháng)
       - weight: number (ước tính cân nặng tính bằng kg)
-      - color: [string] (danh sách màu lông chủ đạo, chỉ chọn từ danh sách được cung cấp) (trả về ít nhất 1 và không quá 2 màu)
+      - colors: [string] (danh sách màu lông chủ đạo **(chiếm trên 50% bề mặt)**, chỉ chọn từ danh sách được cung cấp)  
+      (trả về ít nhất 1 và không quá 2 màu; nếu không có màu nào đạt độ khớp ≥80% thì trả về [])
       - identificationFeature: string (đặc điểm nhận dạng nổi bật chỉ có ở con vật này khác với đặc điểm chung của loài, nếu có)
 
       ## Yêu cầu đặc biệt:
@@ -235,8 +247,7 @@ const searchPetWithGPT = async (
 
 
         Nếu tất cả species và breeds đều hợp lệ, hãy trả về JSON kết quả như bình thường.
-        Nếu sau khi phân tích con vật, màu lông không nằm trong danh sách màu lông hợp lệ thì chuyển sang màu gần giống nhất trong danh sách hợp lệ.
-        
+
         - DANH SÁCH SPECIES (kèm mô tả):
          ${JSON.stringify(speciesList)}
         - DANH SÁCH BREEDS (kèm mô tả):
@@ -263,6 +274,17 @@ const searchPetWithGPT = async (
         "colors": ["vàng đậm", "đen"],
         "identificationFeature": "Có một đốm trắng ở chân trước"
       }
+
+      ## Đầu ra JSON mẫu (nếu ảnh không có màu phù hợp):
+      {
+        "species": "Mèo",
+        "breeds": ["Mèo Xiêm"],
+        "age": 6,
+        "weight": 3.1,
+        "colors": [],
+        "identificationFeature": "Có 2 đốm trắng nhỏ ở ngực"
+      }
+
 
       ## Đầu ra JSON mẫu (nếu ảnh bị lỗi):
       {

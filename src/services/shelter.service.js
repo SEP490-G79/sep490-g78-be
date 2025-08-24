@@ -1478,6 +1478,12 @@ const getSubmissionStatistics = async (shelterId) => {
   return result;
 };
 
+function formatDayMonth(date) {
+  const d = date.getDate().toString().padStart(2, "0");
+  const m = (date.getMonth() + 1).toString().padStart(2, "0");
+  return `${d}/${m}`;
+}
+
 const getAdoptionSubmissionsByWeek = async (shelterId) => {
   const now = dayjs().endOf("day").toDate();
   const fourWeeksAgo = dayjs().subtract(4, "week").startOf("day").toDate();
@@ -1524,18 +1530,23 @@ const getAdoptionSubmissionsByWeek = async (shelterId) => {
   // Chuẩn hóa ra đúng 4 tuần gần nhất
   const result = [];
   for (let i = 3; i >= 0; i--) {
-    const tmpDate = dayjs().subtract(i, "week");
-    const week = getISOWeekNumber(tmpDate.toDate());
-    const year = tmpDate.year();
+    const d = new Date();
+    d.setDate(d.getDate() - i * 7);
+
+    const { week, year } = getISOWeekAndYear(d);
+    const { start, end } = getStartEndOfISOWeek(week, year);
+
+    const startLabel = formatDayMonth(start);
+    const endLabel = formatDayMonth(end);
+
+    const label = `${startLabel} - ${endLabel}`;
 
     const found = submissions.find(
       (f) => f._id.week === week && f._id.year === year
     );
 
     result.push({
-      week: `${tmpDate.startOf("isoWeek").format("DD/MM")} - ${tmpDate
-        .endOf("isoWeek")
-        .format("DD/MM")}`,
+      week: label,
       count: found ? found.count : 0,
     });
   }
